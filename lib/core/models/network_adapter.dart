@@ -24,7 +24,9 @@ class NetworkAdapter {
   final String description;
 
   final NetworkAdapterStatus status;
-  final AddressingMode addressingMode;
+
+  /// `null` when the adapter has no IPv4 interface, e.g. while disabled.
+  final AddressingMode? addressingMode;
   final String? ipAddress;
   final String? subnetMask;
   final String? defaultGateway;

@@ -121,6 +121,17 @@ prefix length to a dotted subnet mask. The reader sits behind
 `NetworkAdapterReader`, so it can be swapped for a Win32 FFI implementation
 (`GetAdaptersAddresses`) later if PowerShell startup time becomes a problem.
 
+- The script is passed with `-EncodedCommand` (Base64 of UTF-16LE), so it
+  needs no command-line escaping.
+- One read takes 2–5 seconds; the UI must show a loading state and never
+  read adapters on the UI thread synchronously.
+- APIPA addresses (169.254.x.x) are only reported when the adapter has no
+  other IPv4 address, so a disconnected static adapter shows its configured
+  address.
+- A disconnected adapter's static gateway only exists in the route
+  `PersistentStore`; the script reads both active and persistent routes.
+- A disabled adapter has no IPv4 interface: `addressingMode` is `null`.
+
 ## Design decisions
 
 - Pass arguments to `Process.run` as a list, never as one concatenated string,
