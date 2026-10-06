@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../contracts/command_runner.dart';
 import '../contracts/network_adapter_reader.dart';
 import '../models/addressing_mode.dart';
+import '../models/ipv4_address.dart';
 import '../models/network_adapter.dart';
 
 /// Reads adapters and their IPv4 settings by running a PowerShell script
@@ -34,16 +35,12 @@ class PowerShellNetworkAdapterReader implements NetworkAdapterReader {
   }
 
   Future<String> _runAdapterQueryScript() async {
-    final result = await _commandRunner.run(
-      _powerShellExecutable,
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-EncodedCommand',
-        _encodeForPowerShellCommandLine(_adapterQueryScript),
-      ],
-      outputEncoding: utf8,
-    );
+    final result = await _commandRunner.run(_powerShellExecutable, [
+      '-NoProfile',
+      '-NonInteractive',
+      '-EncodedCommand',
+      _encodeForPowerShellCommandLine(_adapterQueryScript),
+    ], outputEncoding: utf8);
     if (result.exitCode != 0) {
       throw NetworkAdapterReadException(
         'PowerShell exited with code ${result.exitCode}: '
@@ -89,12 +86,13 @@ class PowerShellNetworkAdapterReader implements NetworkAdapterReader {
       name: adapterEntry['name'] as String,
       description: adapterEntry['description'] as String? ?? '',
       status: _statusFromPowerShell(adapterEntry['status'] as String?),
-      addressingMode:
-          _addressingModeFromPowerShell(adapterEntry['dhcp'] as String?),
+      addressingMode: _addressingModeFromPowerShell(
+        adapterEntry['dhcp'] as String?,
+      ),
       ipAddress: adapterEntry['ipAddress'] as String?,
       subnetMask: prefixLength == null
           ? null
-          : _subnetMaskFromPrefixLength(prefixLength),
+          : Ipv4Address.subnetMaskFromPrefixLength(prefixLength).toString(),
       defaultGateway: adapterEntry['defaultGateway'] as String?,
       dnsServers: List<String>.from(
         adapterEntry['dnsServers'] as List<Object?>? ?? const <Object?>[],
@@ -117,11 +115,6 @@ class PowerShellNetworkAdapterReader implements NetworkAdapterReader {
       'Disabled' => AddressingMode.staticIp,
       _ => null,
     };
-  }
-
-  String _subnetMaskFromPrefixLength(int prefixLength) {
-    final maskBits = (0xFFFFFFFF << (32 - prefixLength)) & 0xFFFFFFFF;
-    return [24, 16, 8, 0].map((shift) => (maskBits >> shift) & 0xFF).join('.');
   }
 
   // Windows treats interface aliases case-insensitively.

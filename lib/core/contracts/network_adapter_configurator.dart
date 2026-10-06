@@ -6,7 +6,10 @@ import '../models/network_profile.dart';
 /// result; both are the responsibility of the caller.
 abstract interface class NetworkAdapterConfigurator {
   /// Throws [NetworkConfigurationException] when the system rejects a setting.
-  Future<void> applyProfileToAdapter(NetworkProfile profile, String adapterName);
+  Future<void> applyProfileToAdapter(
+    NetworkProfile profile,
+    String adapterName,
+  );
 }
 
 /// Thrown when the system refuses to apply a network setting.

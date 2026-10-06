@@ -41,6 +41,7 @@ lib/
 │   ├── models/
 │   │   ├── network_profile.dart
 │   │   ├── network_adapter.dart
+│   │   ├── ipv4_address.dart                  (parsing + subnet arithmetic)
 │   │   └── addressing_mode.dart               (dhcp | staticIp)
 │   ├── contracts/
 │   │   ├── network_adapter_reader.dart
@@ -153,6 +154,15 @@ prefix length to a dotted subnet mask. The reader sits behind
   because netsh can report success before the setting is active.
 - Use `Platform.environment['APPDATA']` for the profile path instead of
   `path_provider`, which would add a company/app subfolder.
+- `profiles.json` is `{"formatVersion": 1, "profiles": [...]}`, written to a
+  `.tmp` file and renamed over the original. A file that cannot be parsed or
+  has a newer format version raises `NetworkProfileStorageException`; never
+  treat it as "no profiles", or the next save would wipe the user's data.
+- IPv4 parsing rejects leading zeros (`010`), because Windows reads them as
+  octal.
+- The validator returns all errors at once, each tagged with a
+  `NetworkProfileField`, for inline display in the editor. Name uniqueness is
+  checked against `otherProfileNames` passed in by the caller.
 - IPv4 only in the first version.
 - Tests for the configurator use a fake `CommandRunner` and assert on the
   generated commands; the reader is tested against captured JSON samples; no

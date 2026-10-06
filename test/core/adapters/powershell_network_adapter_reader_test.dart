@@ -36,8 +36,8 @@ void main() {
   }
 
   test('reads a DHCP adapter with gateway and DNS', () async {
-    final adapters =
-        await readerReturning(_capturedAdaptersJson).readAllAdapters();
+    final adapters = await readerReturning(_capturedAdaptersJson)
+        .readAllAdapters();
 
     final wifi = adapters.first;
     expect(wifi.name, 'Wi-Fi');
@@ -51,8 +51,8 @@ void main() {
   });
 
   test('reads a disconnected static adapter without gateway or DNS', () async {
-    final adapters =
-        await readerReturning(_capturedAdaptersJson).readAllAdapters();
+    final adapters = await readerReturning(_capturedAdaptersJson)
+        .readAllAdapters();
 
     final ethernet = adapters[1];
     expect(ethernet.status, NetworkAdapterStatus.disconnected);
@@ -62,15 +62,15 @@ void main() {
   });
 
   test('converts a non-octet prefix length to a dotted subnet mask', () async {
-    final adapters =
-        await readerReturning(_capturedAdaptersJson).readAllAdapters();
+    final adapters = await readerReturning(_capturedAdaptersJson)
+        .readAllAdapters();
 
     expect(adapters[2].subnetMask, '255.255.240.0');
   });
 
   test('reads a disabled adapter without IPv4 settings', () async {
-    final adapters =
-        await readerReturning(_capturedAdaptersJson).readAllAdapters();
+    final adapters = await readerReturning(_capturedAdaptersJson)
+        .readAllAdapters();
 
     final disabled = adapters[3];
     expect(disabled.name, 'Netwerkverbinding über USB');
@@ -106,8 +106,7 @@ void main() {
     expect(adapter, isNull);
   });
 
-  test('runs PowerShell without profile and decodes output as UTF-8',
-      () async {
+  test('runs PowerShell without profile and decodes output as UTF-8', () async {
     final commandRunner = RecordingCommandRunner(
       standardOutputForEveryCall: '[]',
     );
@@ -116,10 +115,11 @@ void main() {
 
     final command = commandRunner.recordedCommands.single;
     expect(command.executable, 'powershell.exe');
-    expect(
-      command.arguments.take(3),
-      ['-NoProfile', '-NonInteractive', '-EncodedCommand'],
-    );
+    expect(command.arguments.take(3), [
+      '-NoProfile',
+      '-NonInteractive',
+      '-EncodedCommand',
+    ]);
     expect(command.outputEncoding, utf8);
   });
 
@@ -151,8 +151,11 @@ void main() {
     await expectLater(
       reader.readAllAdapters(),
       throwsA(
-        isA<NetworkAdapterReadException>()
-            .having((error) => error.reason, 'reason', contains('Access denied')),
+        isA<NetworkAdapterReadException>().having(
+          (error) => error.reason,
+          'reason',
+          contains('Access denied'),
+        ),
       ),
     );
   });

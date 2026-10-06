@@ -33,8 +33,9 @@ class RecordingCommandRunner implements CommandRunner {
     );
   }
 
-  List<List<String>> get recordedArgumentLists =>
-      [for (final command in recordedCommands) command.arguments];
+  List<List<String>> get recordedArgumentLists => [
+    for (final command in recordedCommands) command.arguments,
+  ];
 }
 
 class RecordedCommand {

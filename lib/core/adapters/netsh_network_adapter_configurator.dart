@@ -115,8 +115,12 @@ class NetshNetworkAdapterConfigurator implements NetworkAdapterConfigurator {
     }
   }
 
-  List<String> _ipv4Command(String verb, String setting) =>
-      ['interface', 'ipv4', verb, setting];
+  List<String> _ipv4Command(String verb, String setting) => [
+    'interface',
+    'ipv4',
+    verb,
+    setting,
+  ];
 
   // Without this netsh tries to reach each DNS server first, which fails or
   // stalls on isolated machine networks.

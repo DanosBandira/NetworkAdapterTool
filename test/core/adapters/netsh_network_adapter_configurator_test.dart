@@ -36,8 +36,22 @@ void main() {
           .applyProfileToAdapter(dhcpProfile, adapterName);
 
       expect(commandRunner.recordedArgumentLists, [
-        ['interface', 'ipv4', 'set', 'address', 'name=Ethernet 2', 'source=dhcp'],
-        ['interface', 'ipv4', 'set', 'dnsservers', 'name=Ethernet 2', 'source=dhcp'],
+        [
+          'interface',
+          'ipv4',
+          'set',
+          'address',
+          'name=Ethernet 2',
+          'source=dhcp',
+        ],
+        [
+          'interface',
+          'ipv4',
+          'set',
+          'dnsservers',
+          'name=Ethernet 2',
+          'source=dhcp',
+        ],
       ]);
     });
 
@@ -76,22 +90,46 @@ void main() {
 
       expect(commandRunner.recordedArgumentLists, [
         [
-          'interface', 'ipv4', 'set', 'address', 'name=Ethernet 2',
-          'source=static', 'address=192.168.0.10', 'mask=255.255.255.0',
+          'interface',
+          'ipv4',
+          'set',
+          'address',
+          'name=Ethernet 2',
+          'source=static',
+          'address=192.168.0.10',
+          'mask=255.255.255.0',
           'gateway=192.168.0.1',
         ],
         [
-          'interface', 'ipv4', 'set', 'dnsservers', 'name=Ethernet 2',
-          'source=static', 'address=8.8.8.8', 'register=primary',
+          'interface',
+          'ipv4',
+          'set',
+          'dnsservers',
+          'name=Ethernet 2',
+          'source=static',
+          'address=8.8.8.8',
+          'register=primary',
           'validate=no',
         ],
         [
-          'interface', 'ipv4', 'add', 'dnsservers', 'name=Ethernet 2',
-          'address=8.8.4.4', 'index=2', 'validate=no',
+          'interface',
+          'ipv4',
+          'add',
+          'dnsservers',
+          'name=Ethernet 2',
+          'address=8.8.4.4',
+          'index=2',
+          'validate=no',
         ],
         [
-          'interface', 'ipv4', 'add', 'dnsservers', 'name=Ethernet 2',
-          'address=1.1.1.1', 'index=3', 'validate=no',
+          'interface',
+          'ipv4',
+          'add',
+          'dnsservers',
+          'name=Ethernet 2',
+          'address=1.1.1.1',
+          'index=3',
+          'validate=no',
         ],
       ]);
     });
@@ -104,13 +142,24 @@ void main() {
 
       expect(commandRunner.recordedArgumentLists, [
         [
-          'interface', 'ipv4', 'set', 'address', 'name=Ethernet 2',
-          'source=static', 'address=192.168.0.10', 'mask=255.255.255.0',
+          'interface',
+          'ipv4',
+          'set',
+          'address',
+          'name=Ethernet 2',
+          'source=static',
+          'address=192.168.0.10',
+          'mask=255.255.255.0',
           'gateway=none',
         ],
         [
-          'interface', 'ipv4', 'set', 'dnsservers', 'name=Ethernet 2',
-          'source=static', 'address=none',
+          'interface',
+          'ipv4',
+          'set',
+          'dnsservers',
+          'name=Ethernet 2',
+          'source=static',
+          'address=none',
         ],
       ]);
     });
@@ -129,10 +178,11 @@ void main() {
     test('runs netsh.exe for every command', () async {
       final commandRunner = RecordingCommandRunner();
 
-      await NetshNetworkAdapterConfigurator(commandRunner).applyProfileToAdapter(
-        staticProfile(dnsServers: ['8.8.8.8']),
-        adapterName,
-      );
+      await NetshNetworkAdapterConfigurator(commandRunner)
+          .applyProfileToAdapter(
+            staticProfile(dnsServers: ['8.8.8.8']),
+            adapterName,
+          );
 
       expect(
         commandRunner.recordedCommands.map((command) => command.executable),
@@ -140,29 +190,31 @@ void main() {
       );
     });
 
-    test('does not tolerate exit code 1 and stops at the first failure',
-        () async {
-      final commandRunner = RecordingCommandRunner(exitCodeForEveryCall: 1);
+    test(
+      'does not tolerate exit code 1 and stops at the first failure',
+      () async {
+        final commandRunner = RecordingCommandRunner(exitCodeForEveryCall: 1);
 
-      final applying = NetshNetworkAdapterConfigurator(commandRunner)
-          .applyProfileToAdapter(
-        staticProfile(dnsServers: ['8.8.8.8']),
-        adapterName,
-      );
+        final applying = NetshNetworkAdapterConfigurator(commandRunner)
+            .applyProfileToAdapter(
+              staticProfile(dnsServers: ['8.8.8.8']),
+              adapterName,
+            );
 
-      await expectLater(
-        applying,
-        throwsA(
-          isA<NetworkConfigurationException>()
-              .having((error) => error.exitCode, 'exitCode', 1)
-              .having(
-                (error) => error.failedCommand,
-                'failedCommand',
-                contains('set address'),
-              ),
-        ),
-      );
-      expect(commandRunner.recordedCommands, hasLength(1));
-    });
+        await expectLater(
+          applying,
+          throwsA(
+            isA<NetworkConfigurationException>()
+                .having((error) => error.exitCode, 'exitCode', 1)
+                .having(
+                  (error) => error.failedCommand,
+                  'failedCommand',
+                  contains('set address'),
+                ),
+          ),
+        );
+        expect(commandRunner.recordedCommands, hasLength(1));
+      },
+    );
   });
 }
