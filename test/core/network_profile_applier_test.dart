@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:network_profile_switcher/core/contracts/network_adapter_configurator.dart';
-import 'package:network_profile_switcher/core/contracts/network_adapter_reader.dart';
-import 'package:network_profile_switcher/core/models/addressing_mode.dart';
-import 'package:network_profile_switcher/core/models/network_adapter.dart';
-import 'package:network_profile_switcher/core/models/network_profile.dart';
-import 'package:network_profile_switcher/core/network_profile_applier.dart';
-import 'package:network_profile_switcher/core/profiles/network_profile_validator.dart';
+import 'package:network_adapter_tool/core/contracts/network_adapter_configurator.dart';
+import 'package:network_adapter_tool/core/contracts/network_adapter_reader.dart';
+import 'package:network_adapter_tool/core/models/addressing_mode.dart';
+import 'package:network_adapter_tool/core/models/network_adapter.dart';
+import 'package:network_adapter_tool/core/models/network_profile.dart';
+import 'package:network_adapter_tool/core/network_profile_applier.dart';
+import 'package:network_adapter_tool/core/profiles/network_profile_validator.dart';
 
 import '../fakes/fake_network_adapter_reader.dart';
 import '../fakes/recording_network_adapter_configurator.dart';

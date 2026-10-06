@@ -1,5 +1,5 @@
-import 'package:network_profile_switcher/core/contracts/network_adapter_reader.dart';
-import 'package:network_profile_switcher/core/models/network_adapter.dart';
+import 'package:network_adapter_tool/core/contracts/network_adapter_reader.dart';
+import 'package:network_adapter_tool/core/models/network_adapter.dart';
 
 /// A [NetworkAdapterReader] that returns prepared snapshots in sequence, to
 /// simulate settings that only become active after a while.

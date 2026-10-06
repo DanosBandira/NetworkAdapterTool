@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100%" height="100%">
+  <defs>
+    <!-- Zachte schaduw voor diepte -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="3" flood-opacity="0.15" />
+    </filter>
+  </defs>
+
+  <!-- Achtergrond cirkel (symbool icoon) -->
+  <circle cx="100" cy="100" r="90" fill="#EBF3F5" />
+
+  <!-- Oren -->
+  <ellipse cx="42" cy="102" rx="12" ry="16" fill="#E8B088" />
+  <ellipse cx="158" cy="102" rx="12" ry="16" fill="#E8B088" />
+
+  <!-- Vacht / Kop basis -->
+  <path d="M 40 100 C 40 45, 160 45, 160 100 C 160 145, 135 170, 100 170 C 65 170, 40 145, 40 100 Z" fill="#D66829" />
+  
+  <!-- Bovenkant kapje / kruin vacht -->
+  <path d="M 45 90 C 50 48, 150 48, 155 90 C 140 60, 60 60, 45 90 Z" fill="#B34F18" />
+
+  <!-- Gezicht (huid) -->
+  <ellipse cx="100" cy="108" rx="50" ry="46" fill="#F0BE9A" />
+
+  <!-- Ogen -->
+  <circle cx="74" cy="88" r="6" fill="#2C1A14" />
+  <circle cx="126" cy="88" r="6" fill="#2C1A14" />
+  <!-- Oog glinstering -->
+  <circle cx="72" cy="86" r="2" fill="#FFFFFF" />
+  <circle cx="124" cy="86" r="2" fill="#FFFFFF" />
+
+  <!-- Wenkbrauw rimpels -->
+  <path d="M 66 78 Q 74 74 82 80" stroke="#C07752" stroke-width="2.5" stroke-linecap="round" fill="none" />
+  <path d="M 134 78 Q 126 74 118 80" stroke="#C07752" stroke-width="2.5" stroke-linecap="round" fill="none" />
+
+  <!-- Mond (subtiel onder de neus zichtbaar) -->
+  <path d="M 88 160 Q 100 166 112 160" stroke="#2C1A14" stroke-width="3" stroke-linecap="round" fill="none" />
+
+  <!-- De Iconische Neusaap Neus (met schaduw) -->
+  <g filter="url(#shadow)">
+    <path d="M 92 84 
+             C 82 105, 66 128, 66 146 
+             C 66 168, 81 176, 100 176 
+             C 119 176, 134 168, 134 146 
+             C 134 128, 118 105, 108 84 
+             Z" 
+          fill="#E28966" />
+  </g>
+
+  <!-- Neus accenten / gaten -->
+  <path d="M 82 142 C 82 158, 118 158, 118 142" stroke="#CB714E" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.6" />
+  <ellipse cx="90" cy="162" rx="3.5" ry="2" fill="#9E4627" opacity="0.6" />
+  <ellipse cx="110" cy="162" rx="3.5" ry="2" fill="#9E4627" opacity="0.6" />
+</svg>

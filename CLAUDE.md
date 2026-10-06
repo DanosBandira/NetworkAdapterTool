@@ -1,4 +1,4 @@
-# NetworkProfileSwitcher
+# Network Adapter Tool
 
 Windows desktop tool to switch network adapters between DHCP and static IP
 settings using saved profiles.
@@ -44,6 +44,8 @@ lib/
 │   │   ├── network_adapter.dart
 │   │   ├── ipv4_address.dart                  (parsing + subnet arithmetic)
 │   │   ├── ping_target.dart                   (IP + optional name)
+│   │   ├── network_preset.dart                (name + adapter→profile lines)
+│   │   ├── network_profile_library.dart       (profiles + presets, stored together)
 │   │   └── addressing_mode.dart               (dhcp | staticIp)
 │   ├── contracts/
 │   │   ├── network_adapter_reader.dart
@@ -60,16 +62,21 @@ lib/
 │   │   └── ping_targets_checker.dart
 │   ├── profiles/
 │   │   ├── json_network_profile_repository.dart
-│   │   └── network_profile_validator.dart
-│   └── network_profile_applier.dart
+│   │   ├── network_profile_validator.dart
+│   │   └── network_preset_validator.dart
+│   ├── network_profile_applier.dart
+│   └── network_preset_applier.dart
 └── app/
     ├── view_models/
     │   ├── main_view_model.dart
     │   ├── network_adapter_view_model.dart
-    │   └── network_profile_editor_view_model.dart
+    │   ├── network_profile_editor_view_model.dart
+    │   └── network_preset_editor_view_model.dart
     └── views/
         ├── main_view.dart
-        └── network_profile_editor_view.dart
+        ├── left_arrow_border.dart
+        ├── network_profile_editor_view.dart
+        └── network_preset_editor_view.dart
 test/
 ├── core/ · app/                               (mirror lib/)
 └── fakes/                                     (fake reader/configurator/runner/repository)
@@ -83,7 +90,9 @@ docs/architecture.html                         (layers + dependency graph)
 | `PowerShellNetworkAdapterReader` | Read adapters and their current IPv4 settings via a PowerShell script that returns JSON | `CommandRunner` |
 | `NetshNetworkAdapterConfigurator` | Translate a profile into netsh commands | `CommandRunner` |
 | `ProcessCommandRunner` | Start an executable with an argument list, return exit code and output | – |
-| `JsonNetworkProfileRepository` | Load/save profiles in `%APPDATA%\NetworkProfileSwitcher\profiles.json` | – |
+| `JsonNetworkProfileRepository` | Load/save the `NetworkProfileLibrary` (profiles + presets) in `%APPDATA%\NetworkAdapterTool\profiles.json`; falls back to the pre-rename `%APPDATA%\NetworkProfileSwitcher\profiles.json` while the new file does not exist and never changes that legacy file | – |
+| `NetworkPresetValidator` | Preset name unique, ≥1 line, lines complete, adapter once, profile exists | – |
+| `NetworkPresetApplier` | Apply preset lines one by one via `NetworkProfileApplier`; a failing line does not stop the rest | profile applier |
 | `NetworkProfileValidator` | Validate IP, subnet mask, gateway in same subnet, DNS addresses | – |
 | `NetworkProfileApplier` | Use case: validate, apply, verify the result | validator, configurator, reader |
 | `PingExeHostPinger` | One echo request via `ping.exe`; reply = exit code 0 and `TTL=` in the output | `CommandRunner` |
@@ -103,6 +112,11 @@ docs/architecture.html                         (layers + dependency graph)
 
 A profile is independent of an adapter: the user picks the target adapter when
 applying it.
+
+`NetworkPreset`: `name` + `assignments` (list of `PresetAssignment`:
+`adapterName` + `profileName`). Applies several adapters at once. Both sides
+are referenced by name; adapters are not validated against the current system
+(e.g. a USB adapter may be absent), failures show per line when applying.
 
 ## netsh commands
 
@@ -189,8 +203,15 @@ prefix length to a dotted subnet mask. The reader sits behind
   show under the profile card and are dropped when the profile is edited or
   deleted. `ping.exe` exits 0 on "Destination host unreachable", so only
   output containing `TTL=` counts as a reply.
-- `profiles.json` is `{"formatVersion": 2, "profiles": [...]}` (version 2
-  added `pingTargets`; version 1 files still load), written to a
+- Presets: lines are applied sequentially (parallel netsh/PowerShell runs
+  only compete). Each line gets its own result under the preset card; the
+  status line summarizes "x of y adapters switched". Afterwards the ping
+  targets of all successfully applied profiles are pinged. Renaming a profile
+  updates every preset in the same save; deleting a profile used by a preset
+  is refused with a message naming the presets.
+- `profiles.json` is `{"formatVersion": 3, "profiles": [...], "presets":
+  [...]}` (2 added `pingTargets`, 3 added `presets`; older files still load),
+  written to a
   `.tmp` file and renamed over the original. A file that cannot be parsed or
   has a newer format version raises `NetworkProfileStorageException`; never
   treat it as "no profiles", or the next save would wipe the user's data.
@@ -241,7 +262,8 @@ prefix length to a dotted subnet mask. The reader sits behind
 ## UI
 
 - Main window: adapter grid (name, status, current IP, DHCP/static) on the
-  left, profile list on the right. Below them, centered, the "Apply profile
+  left; on the right the profile list (top half) and the preset list (bottom
+  half, light purple cards with an "Apply" button and per-line results). Below them, centered, the "Apply profile
   to selected adapter" button shaped as a left-pointing arrow
   (`LeftArrowBorder`: the profile goes right-to-left onto the adapter), orange
   (`0xFFF57C00`, white text; theme grey when disabled), with the status line

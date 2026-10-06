@@ -1,18 +1,18 @@
-import '../models/network_profile.dart';
+import '../models/network_profile_library.dart';
 
-/// Persists the user's network profiles.
+/// Persists the user's profiles and presets.
 ///
-/// The profile list is small, so it is always loaded and saved as a whole.
+/// The library is small, so it is always loaded and saved as a whole.
 abstract interface class NetworkProfileRepository {
-  /// Returns an empty list when no profiles have been saved yet.
+  /// Returns an empty library when nothing has been saved yet.
   ///
-  /// Throws [NetworkProfileStorageException] when stored profiles exist but
-  /// cannot be read, so they are never silently replaced by an empty list.
-  Future<List<NetworkProfile>> loadAllProfiles();
+  /// Throws [NetworkProfileStorageException] when stored data exists but
+  /// cannot be read, so it is never silently replaced by an empty library.
+  Future<NetworkProfileLibrary> loadLibrary();
 
-  /// Throws [NetworkProfileStorageException] when the profiles cannot be
+  /// Throws [NetworkProfileStorageException] when the library cannot be
   /// written.
-  Future<void> saveAllProfiles(List<NetworkProfile> profiles);
+  Future<void> saveLibrary(NetworkProfileLibrary library);
 }
 
 /// Thrown when profiles cannot be read from or written to storage.

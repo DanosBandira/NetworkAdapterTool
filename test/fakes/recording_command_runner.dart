@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:network_profile_switcher/core/contracts/command_runner.dart';
+import 'package:network_adapter_tool/core/contracts/command_runner.dart';
 
 /// A [CommandRunner] that records every call instead of starting a process,
 /// so tests can assert on the generated commands without touching a real

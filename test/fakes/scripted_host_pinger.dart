@@ -1,4 +1,4 @@
-import 'package:network_profile_switcher/core/contracts/host_pinger.dart';
+import 'package:network_adapter_tool/core/contracts/host_pinger.dart';
 
 /// A [HostPinger] that answers from a script per address: each attempt takes
 /// the next entry (`null` = no reply), and the last entry repeats. Addresses

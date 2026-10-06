@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:network_profile_switcher/app/view_models/main_view_model.dart';
-import 'package:network_profile_switcher/app/views/left_arrow_border.dart';
-import 'package:network_profile_switcher/core/models/addressing_mode.dart';
-import 'package:network_profile_switcher/core/models/network_adapter.dart';
-import 'package:network_profile_switcher/core/models/network_profile.dart';
-import 'package:network_profile_switcher/core/network_profile_applier.dart';
-import 'package:network_profile_switcher/core/profiles/network_profile_validator.dart';
-import 'package:network_profile_switcher/core/reachability/ping_targets_checker.dart';
-import 'package:network_profile_switcher/main.dart';
+import 'package:network_adapter_tool/app/view_models/main_view_model.dart';
+import 'package:network_adapter_tool/app/views/left_arrow_border.dart';
+import 'package:network_adapter_tool/core/models/addressing_mode.dart';
+import 'package:network_adapter_tool/core/models/network_adapter.dart';
+import 'package:network_adapter_tool/core/models/network_profile.dart';
+import 'package:network_adapter_tool/core/network_preset_applier.dart';
+import 'package:network_adapter_tool/core/network_profile_applier.dart';
+import 'package:network_adapter_tool/core/profiles/network_profile_validator.dart';
+import 'package:network_adapter_tool/core/reachability/ping_targets_checker.dart';
+import 'package:network_adapter_tool/main.dart';
 
 import '../../fakes/fake_network_adapter_reader.dart';
 import '../../fakes/in_memory_network_profile_repository.dart';
@@ -29,6 +30,11 @@ void main() {
         subnetMask: '255.255.255.0',
       ),
     ]);
+    final applier = NetworkProfileApplier(
+      validator: const NetworkProfileValidator(),
+      configurator: RecordingNetworkAdapterConfigurator(),
+      reader: reader,
+    );
     viewModel = MainViewModel(
       reader: reader,
       repository: InMemoryNetworkProfileRepository(
@@ -41,11 +47,8 @@ void main() {
           ),
         ],
       ),
-      applier: NetworkProfileApplier(
-        validator: const NetworkProfileValidator(),
-        configurator: RecordingNetworkAdapterConfigurator(),
-        reader: reader,
-      ),
+      applier: applier,
+      presetApplier: NetworkPresetApplier(applier),
       pingTargetsChecker: PingTargetsChecker(ScriptedHostPinger()),
     );
     await viewModel.initialize();
@@ -55,9 +58,7 @@ void main() {
     tester.view.physicalSize = const Size(1100, 680);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(
-      NetworkProfileSwitcherApp(mainViewModel: viewModel),
-    );
+    await tester.pumpWidget(NetworkAdapterToolApp(mainViewModel: viewModel));
   }
 
   testWidgets('colors a connected adapter green, darker when selected', (
@@ -128,6 +129,35 @@ void main() {
       const Color(0xFFF57C00),
     );
     expect(find.text('Switch to DHCP'), findsNothing);
+  });
+
+  testWidgets('shows an empty presets panel below the profiles', (
+    tester,
+  ) async {
+    await showApp(tester);
+
+    expect(find.text('Presets'), findsOneWidget);
+    expect(find.byTooltip('New preset'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Presets')).dy,
+      greaterThan(tester.getTopLeft(find.text('Profiles')).dy),
+    );
+  });
+
+  testWidgets('opens the preset editor with one empty line', (tester) async {
+    await showApp(tester);
+
+    await tester.tap(find.byTooltip('New preset'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+
+    expect(find.text('New preset'), findsOneWidget);
+    expect(find.text('Enter a preset name.'), findsOneWidget);
+    expect(
+      find.text('Choose an adapter and a profile on every line.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('shows adapters and profiles', (tester) async {

@@ -1,5 +1,5 @@
-import 'package:network_profile_switcher/core/contracts/network_adapter_configurator.dart';
-import 'package:network_profile_switcher/core/models/network_profile.dart';
+import 'package:network_adapter_tool/core/contracts/network_adapter_configurator.dart';
+import 'package:network_adapter_tool/core/models/network_profile.dart';
 
 /// A [NetworkAdapterConfigurator] that records what it was asked to apply,
 /// optionally failing like netsh would.

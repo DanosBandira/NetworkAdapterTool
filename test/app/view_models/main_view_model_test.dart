@@ -1,15 +1,17 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:network_profile_switcher/app/view_models/main_view_model.dart';
-import 'package:network_profile_switcher/core/contracts/network_adapter_configurator.dart';
-import 'package:network_profile_switcher/core/contracts/network_adapter_reader.dart';
-import 'package:network_profile_switcher/core/contracts/network_profile_repository.dart';
-import 'package:network_profile_switcher/core/models/addressing_mode.dart';
-import 'package:network_profile_switcher/core/models/network_adapter.dart';
-import 'package:network_profile_switcher/core/models/network_profile.dart';
-import 'package:network_profile_switcher/core/network_profile_applier.dart';
-import 'package:network_profile_switcher/core/models/ping_target.dart';
-import 'package:network_profile_switcher/core/profiles/network_profile_validator.dart';
-import 'package:network_profile_switcher/core/reachability/ping_targets_checker.dart';
+import 'package:network_adapter_tool/app/view_models/main_view_model.dart';
+import 'package:network_adapter_tool/core/contracts/network_adapter_configurator.dart';
+import 'package:network_adapter_tool/core/contracts/network_adapter_reader.dart';
+import 'package:network_adapter_tool/core/contracts/network_profile_repository.dart';
+import 'package:network_adapter_tool/core/models/addressing_mode.dart';
+import 'package:network_adapter_tool/core/models/network_adapter.dart';
+import 'package:network_adapter_tool/core/models/network_profile.dart';
+import 'package:network_adapter_tool/core/models/network_preset.dart';
+import 'package:network_adapter_tool/core/network_preset_applier.dart';
+import 'package:network_adapter_tool/core/network_profile_applier.dart';
+import 'package:network_adapter_tool/core/models/ping_target.dart';
+import 'package:network_adapter_tool/core/profiles/network_profile_validator.dart';
+import 'package:network_adapter_tool/core/reachability/ping_targets_checker.dart';
 
 import '../../fakes/fake_network_adapter_reader.dart';
 import '../../fakes/in_memory_network_profile_repository.dart';
@@ -56,15 +58,17 @@ void main() {
   });
 
   MainViewModel createViewModel(NetworkAdapterReader reader) {
+    final applier = NetworkProfileApplier(
+      validator: const NetworkProfileValidator(),
+      configurator: configurator,
+      reader: reader,
+      verificationAttempts: 1,
+    );
     return MainViewModel(
       reader: reader,
       repository: repository,
-      applier: NetworkProfileApplier(
-        validator: const NetworkProfileValidator(),
-        configurator: configurator,
-        reader: reader,
-        verificationAttempts: 1,
-      ),
+      applier: applier,
+      presetApplier: NetworkPresetApplier(applier),
       pingTargetsChecker: PingTargetsChecker(
         pinger,
         tryFor: const Duration(milliseconds: 50),
@@ -337,6 +341,128 @@ void main() {
       await viewModel.deleteProfile(lineProfile);
 
       expect(viewModel.pingStatusesFor(lineProfile.name), isNull);
+    });
+  });
+
+  group('presets', () {
+    const plc = PingTarget(ipAddress: '10.100.10.1', name: 'PLC');
+    const lineProfile = NetworkProfile(
+      name: 'Line 1',
+      addressingMode: AddressingMode.dhcp,
+      pingTargets: [plc],
+    );
+    const linePreset = NetworkPreset(
+      name: 'Morning',
+      assignments: [
+        PresetAssignment(adapterName: 'Ethernet', profileName: 'Line 1'),
+        PresetAssignment(adapterName: 'Missing', profileName: 'Office'),
+      ],
+    );
+
+    setUp(() {
+      repository = InMemoryNetworkProfileRepository(
+        storedProfiles: [lineProfile, officeProfile],
+        storedPresets: [linePreset],
+      );
+      pinger = ScriptedHostPinger({
+        plc.ipAddress: [const Duration(milliseconds: 1)],
+      });
+    });
+
+    test('applies every line and reports each result', () async {
+      // Looks adapters up by name, so the "Missing" line finds nothing.
+      final viewModel = await initializedViewModel(
+        _TwoAdapterReader(
+          ethernet(),
+          const NetworkAdapter(
+            name: 'Wi-Fi',
+            description: 'Intel(R) Wi-Fi',
+            status: NetworkAdapterStatus.connected,
+            addressingMode: AddressingMode.dhcp,
+          ),
+        ),
+      );
+
+      await viewModel.applyPreset(linePreset);
+
+      final statuses = viewModel.lineStatusesFor('Morning')!;
+      expect(statuses.map((status) => status.state), [
+        PresetLineState.applied,
+        PresetLineState.failed,
+      ]);
+      expect(statuses.last.message, contains('Missing'));
+      expect(viewModel.statusMessage?.kind, StatusKind.error);
+      expect(viewModel.statusMessage?.text, contains('1 of 2'));
+      expect(viewModel.isApplying, isFalse);
+    });
+
+    test('pings the targets of the applied profiles afterwards', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      await viewModel.applyPreset(linePreset);
+
+      expect(
+        viewModel.pingStatusesFor('Line 1')!.single.state,
+        PingState.reachable,
+      );
+    });
+
+    test('refuses to delete a profile used by a preset', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      await viewModel.deleteProfile(officeProfile);
+
+      expect(repository.storedProfiles, contains(officeProfile));
+      expect(viewModel.statusMessage?.text, contains('"Morning"'));
+      expect(viewModel.presetsUsingProfile('Office'), [linePreset]);
+    });
+
+    test('carries a profile rename into the presets', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      const renamedOffice = NetworkProfile(
+        name: 'Head office',
+        addressingMode: AddressingMode.dhcp,
+      );
+
+      await viewModel.saveProfile(
+        renamedOffice,
+        originalProfile: officeProfile,
+      );
+
+      expect(
+        repository.storedPresets.single.assignments.last.profileName,
+        'Head office',
+      );
+    });
+
+    test('adds, replaces and deletes presets', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      const eveningPreset = NetworkPreset(
+        name: 'Evening',
+        assignments: [
+          PresetAssignment(adapterName: 'Ethernet', profileName: 'Office'),
+        ],
+      );
+
+      await viewModel.savePreset(eveningPreset);
+      expect(repository.storedPresets.map((preset) => preset.name), [
+        'Morning',
+        'Evening',
+      ]);
+
+      await viewModel.deletePreset(linePreset);
+      expect(repository.storedPresets.map((preset) => preset.name), [
+        'Evening',
+      ]);
+      expect(viewModel.presetNamesOtherThan(eveningPreset), isEmpty);
     });
   });
 

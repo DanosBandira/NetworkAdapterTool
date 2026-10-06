@@ -1,10 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:network_profile_switcher/core/adapters/powershell_network_adapter_reader.dart';
-import 'package:network_profile_switcher/core/contracts/network_adapter_reader.dart';
-import 'package:network_profile_switcher/core/models/addressing_mode.dart';
-import 'package:network_profile_switcher/core/models/network_adapter.dart';
+import 'package:network_adapter_tool/core/adapters/powershell_network_adapter_reader.dart';
+import 'package:network_adapter_tool/core/contracts/network_adapter_reader.dart';
+import 'package:network_adapter_tool/core/models/addressing_mode.dart';
+import 'package:network_adapter_tool/core/models/network_adapter.dart';
 
 import '../../fakes/recording_command_runner.dart';
 

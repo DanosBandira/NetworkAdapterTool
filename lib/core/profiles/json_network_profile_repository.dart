@@ -2,15 +2,20 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../contracts/network_profile_repository.dart';
+import '../models/network_preset.dart';
 import '../models/network_profile.dart';
+import '../models/network_profile_library.dart';
 
-/// Stores all profiles in one indented JSON file, by default
-/// `%APPDATA%\NetworkProfileSwitcher\profiles.json`.
+/// Stores all profiles and presets in one indented JSON file, by default
+/// `%APPDATA%\NetworkAdapterTool\profiles.json`.
 ///
 /// The file carries a format version so an older app version refuses a file
 /// written by a newer one instead of overwriting fields it does not know.
 class JsonNetworkProfileRepository implements NetworkProfileRepository {
-  const JsonNetworkProfileRepository(this._profilesFile);
+  const JsonNetworkProfileRepository(
+    this._profilesFile, {
+    this._legacyProfilesFile,
+  });
 
   factory JsonNetworkProfileRepository.inRoamingAppData() {
     final roamingAppDataPath = Platform.environment['APPDATA'];
@@ -20,79 +25,107 @@ class JsonNetworkProfileRepository implements NetworkProfileRepository {
       );
     }
     return JsonNetworkProfileRepository(
-      File('$roamingAppDataPath\\NetworkProfileSwitcher\\profiles.json'),
+      File('$roamingAppDataPath\\NetworkAdapterTool\\profiles.json'),
+      // The app was called "NetworkProfileSwitcher" until 2026-10-06.
+      legacyProfilesFile: File(
+        '$roamingAppDataPath\\NetworkProfileSwitcher\\profiles.json',
+      ),
     );
   }
 
   // Version history:
   // 1: initial format.
-  // 2: profiles may contain "pingTargets". Version 1 files load unchanged;
-  //    the bump stops an older app from saving and dropping ping targets.
-  static const _currentFormatVersion = 2;
+  // 2: profiles may contain "pingTargets".
+  // 3: top-level "presets" list.
+  // Older files load unchanged; each bump stops an older app from saving and
+  // dropping data it does not know.
+  static const _currentFormatVersion = 3;
 
   final File _profilesFile;
 
+  // Read only while the current file does not exist yet; the next save
+  // writes to the current location. The legacy file is never changed, so it
+  // stays as a backup.
+  final File? _legacyProfilesFile;
+
   @override
-  Future<List<NetworkProfile>> loadAllProfiles() async {
-    if (!await _profilesFile.exists()) return [];
-    final fileContent = await _readProfilesFile();
-    return _parseProfiles(fileContent);
+  Future<NetworkProfileLibrary> loadLibrary() async {
+    final fileToRead = await _existingProfilesFile();
+    if (fileToRead == null) return const NetworkProfileLibrary();
+    final fileContent = await _readFile(fileToRead);
+    return _parseLibrary(fileContent, fileToRead);
   }
 
   @override
-  Future<void> saveAllProfiles(List<NetworkProfile> profiles) async {
-    final fileContent = _serializeProfiles(profiles);
+  Future<void> saveLibrary(NetworkProfileLibrary library) async {
+    final fileContent = _serializeLibrary(library);
     await _replaceProfilesFile(fileContent);
   }
 
-  Future<String> _readProfilesFile() async {
+  Future<File?> _existingProfilesFile() async {
+    if (await _profilesFile.exists()) return _profilesFile;
+    final legacyProfilesFile = _legacyProfilesFile;
+    if (legacyProfilesFile != null && await legacyProfilesFile.exists()) {
+      return legacyProfilesFile;
+    }
+    return null;
+  }
+
+  Future<String> _readFile(File file) async {
     try {
-      return await _profilesFile.readAsString();
+      return await file.readAsString();
     } on FileSystemException catch (error) {
       throw NetworkProfileStorageException(
-        'Cannot read ${_profilesFile.path}: ${error.message}',
+        'Cannot read ${file.path}: ${error.message}',
       );
     }
   }
 
-  List<NetworkProfile> _parseProfiles(String fileContent) {
+  NetworkProfileLibrary _parseLibrary(String fileContent, File file) {
     try {
       final document = jsonDecode(fileContent) as Map<String, Object?>;
-      _ensureFormatVersionIsSupported(document['formatVersion'] as int?);
-      final profileEntries = document['profiles'] as List<Object?>;
-      return [
-        for (final profileEntry in profileEntries)
-          NetworkProfile.fromJson(profileEntry as Map<String, Object?>),
-      ];
+      _ensureFormatVersionIsSupported(document['formatVersion'] as int?, file);
+      return NetworkProfileLibrary(
+        profiles: [
+          for (final profileEntry in document['profiles'] as List<Object?>)
+            NetworkProfile.fromJson(profileEntry as Map<String, Object?>),
+        ],
+        presets: [
+          for (final presetEntry
+              in document['presets'] as List<Object?>? ?? const <Object?>[])
+            NetworkPreset.fromJson(presetEntry as Map<String, Object?>),
+        ],
+      );
     } on FormatException catch (error) {
       throw NetworkProfileStorageException(
-        '${_profilesFile.path} is not valid JSON: ${error.message}',
+        '${file.path} is not valid JSON: ${error.message}',
       );
     } on TypeError catch (error) {
       throw NetworkProfileStorageException(
-        '${_profilesFile.path} has an unexpected structure: $error',
+        '${file.path} has an unexpected structure: $error',
       );
     } on ArgumentError catch (error) {
       // Thrown by AddressingMode.values.byName for an unknown mode.
       throw NetworkProfileStorageException(
-        '${_profilesFile.path} contains an unknown value: ${error.message}',
+        '${file.path} contains an unknown value: ${error.message}',
       );
     }
   }
 
-  void _ensureFormatVersionIsSupported(int? formatVersion) {
+  void _ensureFormatVersionIsSupported(int? formatVersion, File file) {
     if (formatVersion == null || formatVersion > _currentFormatVersion) {
       throw NetworkProfileStorageException(
-        '${_profilesFile.path} has format version $formatVersion; this app '
+        '${file.path} has format version $formatVersion; this app '
         'supports up to $_currentFormatVersion.',
       );
     }
   }
 
-  String _serializeProfiles(List<NetworkProfile> profiles) {
+  String _serializeLibrary(NetworkProfileLibrary library) {
     final document = {
       'formatVersion': _currentFormatVersion,
-      'profiles': [for (final profile in profiles) profile.toJson()],
+      'profiles': [for (final profile in library.profiles) profile.toJson()],
+      'presets': [for (final preset in library.presets) preset.toJson()],
     };
     // Indented so users can read or back up the file by hand.
     return const JsonEncoder.withIndent('  ').convert(document);

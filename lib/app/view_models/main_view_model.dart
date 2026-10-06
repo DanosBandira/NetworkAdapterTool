@@ -3,14 +3,17 @@ import 'package:flutter/foundation.dart';
 import '../../core/contracts/network_adapter_reader.dart';
 import '../../core/contracts/network_profile_repository.dart';
 import '../../core/models/addressing_mode.dart';
+import '../../core/models/network_preset.dart';
 import '../../core/models/network_profile.dart';
+import '../../core/models/network_profile_library.dart';
 import '../../core/models/ping_target.dart';
+import '../../core/network_preset_applier.dart';
 import '../../core/network_profile_applier.dart';
 import '../../core/reachability/ping_targets_checker.dart';
 import 'network_adapter_view_model.dart';
 
-/// State and commands of the main window: the adapter list, the profile list,
-/// applying a profile to an adapter and pinging a profile's targets.
+/// State and commands of the main window: the adapter list, the profile and
+/// preset lists, applying them to adapters and pinging profile targets.
 ///
 /// Holds no network logic itself; everything goes through the injected core
 /// components, so it can be tested with fakes.
@@ -19,6 +22,7 @@ class MainViewModel extends ChangeNotifier {
     required this._reader,
     required this._repository,
     required this._applier,
+    required this._presetApplier,
     required this._pingTargetsChecker,
   });
 
@@ -31,27 +35,31 @@ class MainViewModel extends ChangeNotifier {
   final NetworkAdapterReader _reader;
   final NetworkProfileRepository _repository;
   final NetworkProfileApplier _applier;
+  final NetworkPresetApplier _presetApplier;
   final PingTargetsChecker _pingTargetsChecker;
 
   // Ping results stay visible under their profile until the next ping, an
-  // edit or a delete of that profile.
+  // edit or a delete of that profile. Preset results likewise per preset.
   final Map<String, List<PingTargetStatus>> _pingStatusesByProfileName = {};
   final Set<String> _profileNamesBeingPinged = {};
+  final Map<String, List<PresetLineStatus>> _lineStatusesByPresetName = {};
   bool _isDisposed = false;
 
   List<NetworkAdapterViewModel> _adapters = [];
-  List<NetworkProfile> _profiles = [];
+  NetworkProfileLibrary _library = const NetworkProfileLibrary();
   String? _selectedAdapterName;
   String? _selectedProfileName;
+  String? _presetNameBeingApplied;
   bool _isLoadingAdapters = false;
   bool _isApplying = false;
-  bool _profilesAreLoaded = false;
+  bool _libraryIsLoaded = false;
   StatusMessage? _statusMessage;
   String _adapterSearchText = '';
   String _profileSearchText = '';
 
   List<NetworkAdapterViewModel> get adapters => List.unmodifiable(_adapters);
-  List<NetworkProfile> get profiles => List.unmodifiable(_profiles);
+  List<NetworkProfile> get profiles => List.unmodifiable(_library.profiles);
+  List<NetworkPreset> get presets => List.unmodifiable(_library.presets);
 
   // Searching only hides list entries; the selection is kept, so typing a
   // search never silently changes the adapter or profile that gets applied.
@@ -60,7 +68,7 @@ class MainViewModel extends ChangeNotifier {
       if (adapter.matchesSearch(_adapterSearchText)) adapter,
   ];
   List<NetworkProfile> get visibleProfiles => [
-    for (final profile in _profiles)
+    for (final profile in _library.profiles)
       if (_profileMatchesSearch(profile, _profileSearchText)) profile,
   ];
   String get adapterSearchText => _adapterSearchText;
@@ -72,12 +80,17 @@ class MainViewModel extends ChangeNotifier {
   StatusMessage? get statusMessage => _statusMessage;
 
   bool get canApplySelectedProfile =>
-      _canChangeAdapter && _selectedProfile != null;
-  bool get canSwitchSelectedAdapterToDhcp => _canChangeAdapter;
+      _canChangeAdapters &&
+      _selectedAdapterName != null &&
+      _selectedProfile != null;
+  bool get canSwitchSelectedAdapterToDhcp =>
+      _canChangeAdapters && _selectedAdapterName != null;
+  bool get canApplyPresets => _canChangeAdapters && _libraryIsLoaded;
 
-  // Profile editing is blocked until loading succeeded: saving over a file
-  // that failed to load would replace the user's profiles.
-  bool get canEditProfiles => _profilesAreLoaded;
+  // Editing is blocked until loading succeeded: saving over a file that
+  // failed to load would replace the user's profiles and presets.
+  bool get canEditProfiles => _libraryIsLoaded;
+  bool get canEditPresets => _libraryIsLoaded;
 
   /// `null` when the profile has not been pinged yet.
   List<PingTargetStatus>? pingStatusesFor(String profileName) {
@@ -91,15 +104,26 @@ class MainViewModel extends ChangeNotifier {
   bool canPingProfile(NetworkProfile profile) =>
       profile.pingTargets.isNotEmpty && !isPinging(profile.name);
 
-  bool get _canChangeAdapter =>
-      !_isApplying && !_isLoadingAdapters && _selectedAdapterName != null;
+  /// `null` when the preset has not been applied yet.
+  List<PresetLineStatus>? lineStatusesFor(String presetName) {
+    final statuses = _lineStatusesByPresetName[presetName];
+    return statuses == null ? null : List.unmodifiable(statuses);
+  }
 
-  NetworkProfile? get _selectedProfile => _profiles
-      .where((profile) => profile.name == _selectedProfileName)
-      .firstOrNull;
+  bool isApplyingPreset(String presetName) =>
+      _presetNameBeingApplied == presetName;
+
+  List<NetworkPreset> presetsUsingProfile(String profileName) => [
+    for (final preset in _library.presets)
+      if (preset.usesProfile(profileName)) preset,
+  ];
+
+  bool get _canChangeAdapters => !_isApplying && !_isLoadingAdapters;
+
+  NetworkProfile? get _selectedProfile => _profileNamed(_selectedProfileName);
 
   Future<void> initialize() async {
-    await Future.wait([_loadProfiles(), refreshAdapters()]);
+    await Future.wait([_loadLibrary(), refreshAdapters()]);
   }
 
   Future<void> refreshAdapters() async {
@@ -152,6 +176,26 @@ class MainViewModel extends ChangeNotifier {
     await _applyProfileToSelectedAdapter(_dhcpShortcutProfile);
   }
 
+  /// Applies every line of [preset]; a failing line does not stop the rest.
+  /// Afterwards the ping targets of all successfully applied profiles are
+  /// pinged.
+  Future<void> applyPreset(NetworkPreset preset) async {
+    if (!canApplyPresets) return;
+    _startApplyingPreset(preset);
+    final appliedProfiles = <NetworkProfile>[];
+    await for (final result in _presetApplier.applyPreset(
+      preset,
+      _library.profiles,
+    )) {
+      _recordPresetLineResult(preset.name, result);
+      if (result.isSuccess) appliedProfiles.add(result.profile!);
+    }
+    _finishApplyingPreset(preset);
+    await Future.wait([
+      for (final profile in appliedProfiles) pingTargetsOf(profile),
+    ]);
+  }
+
   /// Pings every target of [profile] until it answers or 10 seconds pass,
   /// updating [pingStatusesFor] as each result comes in.
   Future<void> pingTargetsOf(NetworkProfile profile) async {
@@ -169,41 +213,102 @@ class MainViewModel extends ChangeNotifier {
   /// Names the editor must not reuse; excludes the profile being edited so
   /// saving it under its own name stays allowed.
   List<String> profileNamesOtherThan(NetworkProfile? profileBeingEdited) => [
-    for (final profile in _profiles)
+    for (final profile in _library.profiles)
       if (profile.name != profileBeingEdited?.name) profile.name,
   ];
 
+  List<String> presetNamesOtherThan(NetworkPreset? presetBeingEdited) => [
+    for (final preset in _library.presets)
+      if (preset.name != presetBeingEdited?.name) preset.name,
+  ];
+
   /// Adds [savedProfile], or replaces [originalProfile] with it when editing.
+  /// A rename is carried into every preset that uses the profile.
   Future<void> saveProfile(
     NetworkProfile savedProfile, {
     NetworkProfile? originalProfile,
   }) async {
-    final updatedProfiles = [
-      for (final profile in _profiles)
-        if (profile.name == originalProfile?.name) savedProfile else profile,
-      if (originalProfile == null) savedProfile,
-    ];
-    final isStored = await _storeProfiles(updatedProfiles);
+    final originalName = originalProfile?.name;
+    final updatedLibrary = _library.copyWith(
+      profiles: [
+        for (final profile in _library.profiles)
+          if (profile.name == originalName) savedProfile else profile,
+        if (originalProfile == null) savedProfile,
+      ],
+      presets: originalName == null || originalName == savedProfile.name
+          ? null
+          : [
+              for (final preset in _library.presets)
+                preset.withProfileRenamed(originalName, savedProfile.name),
+            ],
+    );
+    final isStored = await _storeLibrary(updatedLibrary);
     if (isStored) {
       _selectedProfileName = savedProfile.name;
       // Results of the old targets no longer describe the edited profile.
-      _pingStatusesByProfileName.remove(originalProfile?.name);
+      _pingStatusesByProfileName.remove(originalName);
     }
     notifyListeners();
   }
 
+  /// Refused while a preset uses the profile, so presets never point to a
+  /// profile that is gone.
   Future<void> deleteProfile(NetworkProfile profileToDelete) async {
-    final updatedProfiles = [
-      for (final profile in _profiles)
-        if (profile.name != profileToDelete.name) profile,
-    ];
-    final isStored = await _storeProfiles(updatedProfiles);
+    final usingPresets = presetsUsingProfile(profileToDelete.name);
+    if (usingPresets.isNotEmpty) {
+      _statusMessage = StatusMessage.error(
+        '"${profileToDelete.name}" is used by preset '
+        '${usingPresets.map((preset) => '"${preset.name}"').join(', ')}. '
+        'Remove it from the preset first.',
+      );
+      notifyListeners();
+      return;
+    }
+    final isStored = await _storeLibrary(
+      _library.copyWith(
+        profiles: [
+          for (final profile in _library.profiles)
+            if (profile.name != profileToDelete.name) profile,
+        ],
+      ),
+    );
     if (isStored) {
       _pingStatusesByProfileName.remove(profileToDelete.name);
       if (_selectedProfileName == profileToDelete.name) {
         _selectedProfileName = null;
       }
     }
+    notifyListeners();
+  }
+
+  /// Adds [savedPreset], or replaces [originalPreset] with it when editing.
+  Future<void> savePreset(
+    NetworkPreset savedPreset, {
+    NetworkPreset? originalPreset,
+  }) async {
+    final isStored = await _storeLibrary(
+      _library.copyWith(
+        presets: [
+          for (final preset in _library.presets)
+            if (preset.name == originalPreset?.name) savedPreset else preset,
+          if (originalPreset == null) savedPreset,
+        ],
+      ),
+    );
+    if (isStored) _lineStatusesByPresetName.remove(originalPreset?.name);
+    notifyListeners();
+  }
+
+  Future<void> deletePreset(NetworkPreset presetToDelete) async {
+    final isStored = await _storeLibrary(
+      _library.copyWith(
+        presets: [
+          for (final preset in _library.presets)
+            if (preset.name != presetToDelete.name) preset,
+        ],
+      ),
+    );
+    if (isStored) _lineStatusesByPresetName.remove(presetToDelete.name);
     notifyListeners();
   }
 
@@ -218,10 +323,10 @@ class MainViewModel extends ChangeNotifier {
     super.dispose();
   }
 
-  Future<void> _loadProfiles() async {
+  Future<void> _loadLibrary() async {
     try {
-      _profiles = await _repository.loadAllProfiles();
-      _profilesAreLoaded = true;
+      _library = await _repository.loadLibrary();
+      _libraryIsLoaded = true;
     } on NetworkProfileStorageException catch (error) {
       _statusMessage = StatusMessage.error(
         'Could not load profiles: ${error.reason}',
@@ -230,10 +335,10 @@ class MainViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> _storeProfiles(List<NetworkProfile> updatedProfiles) async {
+  Future<bool> _storeLibrary(NetworkProfileLibrary updatedLibrary) async {
     try {
-      await _repository.saveAllProfiles(updatedProfiles);
-      _profiles = updatedProfiles;
+      await _repository.saveLibrary(updatedLibrary);
+      _library = updatedLibrary;
       return true;
     } on NetworkProfileStorageException catch (error) {
       _statusMessage = StatusMessage.error(
@@ -253,7 +358,7 @@ class MainViewModel extends ChangeNotifier {
 
     final outcome = await _applier.applyProfileToAdapter(profile, adapterName);
     _showUpdatedAdapterAfter(outcome);
-    _statusMessage = _describeOutcome(outcome, profile, adapterName);
+    _statusMessage = _describeOutcome(outcome, profile.name, adapterName);
     _isApplying = false;
     notifyListeners();
 
@@ -262,13 +367,70 @@ class MainViewModel extends ChangeNotifier {
     if (outcome is ProfileApplied) await pingTargetsOf(profile);
   }
 
+  void _startApplyingPreset(NetworkPreset preset) {
+    _isApplying = true;
+    _presetNameBeingApplied = preset.name;
+    _lineStatusesByPresetName[preset.name] = [
+      for (final assignment in preset.assignments)
+        PresetLineStatus(assignment, PresetLineState.pending, null),
+    ];
+    _statusMessage = StatusMessage.progress(
+      'Applying preset "${preset.name}"…',
+    );
+    notifyListeners();
+  }
+
+  void _recordPresetLineResult(
+    String presetName,
+    PresetAssignmentResult result,
+  ) {
+    final outcome = result.outcome;
+    if (outcome != null) _showUpdatedAdapterAfter(outcome);
+    final message = outcome == null
+        ? 'Profile "${result.assignment.profileName}" no longer exists.'
+        : _describeOutcome(
+            outcome,
+            result.assignment.profileName,
+            result.assignment.adapterName,
+          ).text;
+    final statuses = _lineStatusesByPresetName[presetName] ?? [];
+    _lineStatusesByPresetName[presetName] = [
+      for (final status in statuses)
+        if (status.assignment == result.assignment)
+          PresetLineStatus(
+            result.assignment,
+            result.isSuccess ? PresetLineState.applied : PresetLineState.failed,
+            message,
+          )
+        else
+          status,
+    ];
+    _notifyListenersUnlessDisposed();
+  }
+
+  void _finishApplyingPreset(NetworkPreset preset) {
+    final statuses = _lineStatusesByPresetName[preset.name] ?? [];
+    final appliedCount = statuses
+        .where((status) => status.state == PresetLineState.applied)
+        .length;
+    final summary =
+        'Preset "${preset.name}": $appliedCount of ${statuses.length} '
+        'adapters switched.';
+    _statusMessage = appliedCount == statuses.length
+        ? StatusMessage.success(summary)
+        : StatusMessage.error('$summary See the preset for details.');
+    _presetNameBeingApplied = null;
+    _isApplying = false;
+    _notifyListenersUnlessDisposed();
+  }
+
   void _startPinging(NetworkProfile profile) {
     _profileNamesBeingPinged.add(profile.name);
     _pingStatusesByProfileName[profile.name] = [
       for (final target in profile.pingTargets)
         PingTargetStatus(target, PingState.pinging),
     ];
-    notifyListeners();
+    _notifyListenersUnlessDisposed();
   }
 
   void _recordPingResult(String profileName, PingTargetResult result) {
@@ -309,15 +471,15 @@ class MainViewModel extends ChangeNotifier {
 
   StatusMessage _describeOutcome(
     ApplyProfileOutcome outcome,
-    NetworkProfile profile,
+    String profileName,
     String adapterName,
   ) {
     return switch (outcome) {
       ProfileApplied() => StatusMessage.success(
-        '"${profile.name}" is active on $adapterName.',
+        '"$profileName" is active on $adapterName.',
       ),
       ProfileInvalid(:final validationErrors) => StatusMessage.error(
-        '"${profile.name}" is invalid: '
+        '"$profileName" is invalid: '
         '${validationErrors.map((error) => error.message).join(' ')}',
       ),
       ProfileNeedsConnectedAdapter() => StatusMessage.error(
@@ -338,6 +500,10 @@ class MainViewModel extends ChangeNotifier {
       ),
     };
   }
+
+  NetworkProfile? _profileNamed(String? profileName) => _library.profiles
+      .where((profile) => profile.name == profileName)
+      .firstOrNull;
 
   bool _profileMatchesSearch(NetworkProfile profile, String searchText) {
     final normalizedSearch = searchText.trim().toLowerCase();
@@ -374,6 +540,19 @@ class PingTargetStatus {
           ? '<1 ms'
           : '${roundTripTime!.inMilliseconds} ms',
   };
+}
+
+enum PresetLineState { pending, applied, failed }
+
+/// Result of one preset line, shown under its preset card.
+class PresetLineStatus {
+  const PresetLineStatus(this.assignment, this.state, this.message);
+
+  final PresetAssignment assignment;
+  final PresetLineState state;
+
+  /// `null` while pending.
+  final String? message;
 }
 
 enum StatusKind { progress, success, error }

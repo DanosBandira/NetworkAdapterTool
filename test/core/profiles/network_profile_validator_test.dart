@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:network_profile_switcher/core/models/addressing_mode.dart';
-import 'package:network_profile_switcher/core/models/network_profile.dart';
-import 'package:network_profile_switcher/core/models/ping_target.dart';
-import 'package:network_profile_switcher/core/profiles/network_profile_validator.dart';
+import 'package:network_adapter_tool/core/models/addressing_mode.dart';
+import 'package:network_adapter_tool/core/models/network_profile.dart';
+import 'package:network_adapter_tool/core/models/ping_target.dart';
+import 'package:network_adapter_tool/core/profiles/network_profile_validator.dart';
 
 void main() {
   const validator = NetworkProfileValidator();

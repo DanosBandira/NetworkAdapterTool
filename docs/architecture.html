@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NetworkProfileSwitcher architectuur</title>
+<title>Network Adapter Tool architectuur</title>
 <style>
 :root {
   --surface-page: #faf9f5;
@@ -90,7 +90,7 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
 </head>
 <body>
 <main>
-<h1>NetworkProfileSwitcher architectuur</h1>
+<h1>Network Adapter Tool architectuur</h1>
 <p class="subtitle">Lagen van boven naar beneden; afhankelijkheden lopen alleen omlaag.</p>
 
 <div class="legend">
@@ -105,6 +105,7 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
     <div class="card"><div class="name">main.dart</div><div class="role">Composition root</div></div>
     <div class="card"><div class="name">MainView</div><div class="role">Adapters, profielen, toepassen</div></div>
     <div class="card"><div class="name">NetworkProfile&shy;EditorView</div><div class="role">Dialoog met inline validatie</div></div>
+    <div class="card"><div class="name">NetworkPreset&shy;EditorView</div><div class="role">Regels adapter ← profiel kiezen</div></div>
     <div class="card"><div class="name">MainViewModel</div><div class="role">UI-state en acties</div></div>
     <div class="card"><div class="name">NetworkProfile&shy;EditorViewModel</div><div class="role">Velden en foutmeldingen</div></div>
     <div class="card"><div class="name">NetworkAdapter&shy;ViewModel</div><div class="role">Weergaveteksten per adapter</div></div>
@@ -121,6 +122,7 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
     <div class="card"><div class="name">NetworkProfileApplier</div><div class="role">Valideren, toepassen, opnieuw uitlezen en vergelijken</div></div>
     <div class="card"><div class="name">ApplyProfileOutcome</div><div class="role">Applied · Invalid · NeedsConnectedAdapter · RejectedBySystem · NotActive · NotVerified</div></div>
     <div class="card"><div class="name">PingTargetsChecker</div><div class="role">Pingt alle doelen tot antwoord of 10 s</div></div>
+    <div class="card"><div class="name">NetworkPresetApplier</div><div class="role">Past preset-regels één voor één toe</div></div>
   </div>
 </section>
 <div class="arrow">↓ hangt af van</div>
@@ -146,6 +148,7 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
     <div class="card"><div class="name">ProcessCommandRunner</div><div class="role">Process.run met argumentlijst</div></div>
     <div class="card"><div class="name">PingExeHostPinger</div><div class="role">ping.exe, antwoord = TTL= in uitvoer</div></div>
     <div class="card"><div class="name">NetworkProfileValidator</div><div class="role">Fouten per veld, geen contract</div></div>
+    <div class="card"><div class="name">NetworkPresetValidator</div><div class="role">Naam, regels, bestaande profielen</div></div>
   </div>
 </section>
 <div class="arrow">↓ werken met</div>
@@ -158,6 +161,8 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
     <div class="card"><div class="name">AddressingMode</div><div class="role">dhcp · staticIp</div></div>
     <div class="card"><div class="name">Ipv4Address</div><div class="role">Parsen en subnet-rekenwerk</div></div>
     <div class="card"><div class="name">PingTarget</div><div class="role">IP + optionele naam</div></div>
+    <div class="card"><div class="name">NetworkPreset</div><div class="role">Naam + regels adapter ← profiel</div></div>
+    <div class="card"><div class="name">NetworkProfile&shy;Library</div><div class="role">Profielen + presets, samen opgeslagen</div></div>
   </div>
 </section>
 <div class="arrow">↓ praat met</div>
@@ -168,7 +173,7 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
     <div class="card"><div class="name">powershell.exe</div><div class="role">Get-NetAdapter en verwante cmdlets</div></div>
     <div class="card"><div class="name">netsh.exe</div><div class="role">interface ipv4 set/add</div></div>
     <div class="card"><div class="name">ping.exe</div><div class="role">-4 -n 1 -w &lt;ms&gt;</div></div>
-    <div class="card"><div class="name">profiles.json</div><div class="role">%APPDATA%\NetworkProfileSwitcher</div></div>
+    <div class="card"><div class="name">profiles.json</div><div class="role">%APPDATA%\NetworkAdapterTool</div></div>
   </div>
 </section>
 

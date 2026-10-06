@@ -2,15 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/models/addressing_mode.dart';
+import '../../core/models/network_preset.dart';
 import '../../core/models/network_profile.dart';
 import '../view_models/main_view_model.dart';
 import '../view_models/network_adapter_view_model.dart';
+import '../view_models/network_preset_editor_view_model.dart';
 import '../view_models/network_profile_editor_view_model.dart';
 import 'left_arrow_border.dart';
+import 'network_preset_editor_view.dart';
 import 'network_profile_editor_view.dart';
 
-/// Main window: adapters on the left, profiles on the right, apply actions
-/// and the status line at the bottom.
+/// Main window: adapters on the left; profiles (top) and presets (bottom) on
+/// the right; the apply action and the status line at the bottom.
 class MainView extends StatelessWidget {
   const MainView({super.key});
 
@@ -19,7 +22,7 @@ class MainView extends StatelessWidget {
     final viewModel = context.watch<MainViewModel>();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Network Profile Switcher'),
+        title: const Text('Network Adapter Tool'),
         actions: [
           IconButton(
             tooltip: 'Refresh adapters',
@@ -38,7 +41,17 @@ class MainView extends StatelessWidget {
               children: [
                 Expanded(flex: 3, child: _AdapterPanel()),
                 VerticalDivider(width: 1),
-                Expanded(flex: 2, child: _ProfilePanel()),
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: _ProfilePanel()),
+                      Divider(height: 1),
+                      Expanded(child: _PresetPanel()),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -688,6 +701,11 @@ Future<void> _confirmAndDeleteProfile(
   NetworkProfile profile,
 ) async {
   final mainViewModel = context.read<MainViewModel>();
+  final usingPresets = mainViewModel.presetsUsingProfile(profile.name);
+  if (usingPresets.isNotEmpty) {
+    await _explainProfileIsUsedByPresets(context, profile, usingPresets);
+    return;
+  }
   final isConfirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
@@ -706,4 +724,264 @@ Future<void> _confirmAndDeleteProfile(
     ),
   );
   if (isConfirmed ?? false) await mainViewModel.deleteProfile(profile);
+}
+
+Future<void> _explainProfileIsUsedByPresets(
+  BuildContext context,
+  NetworkProfile profile,
+  List<NetworkPreset> usingPresets,
+) {
+  final presetNames = [for (final preset in usingPresets) '"${preset.name}"']
+      .join(', ');
+  return showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Profile is in use'),
+      content: Text(
+        '"${profile.name}" is used by $presetNames. '
+        'Remove it from those presets before deleting it.',
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
+}
+
+class _PresetPanel extends StatelessWidget {
+  const _PresetPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    final viewModel = context.watch<MainViewModel>();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _PanelHeader(
+          title: 'Presets',
+          action: IconButton(
+            tooltip: 'New preset',
+            icon: const Icon(Icons.add),
+            onPressed: viewModel.canEditPresets
+                ? () => _openPresetEditor(context, presetToEdit: null)
+                : null,
+          ),
+        ),
+        Expanded(
+          child: viewModel.presets.isEmpty
+              ? const _EmptyPanelText(
+                  'No presets yet. Add one with + to switch several '
+                  'adapters at once.',
+                )
+              : ListView(
+                  padding: const EdgeInsets.all(8),
+                  children: [
+                    for (final preset in viewModel.presets)
+                      _PresetTile(preset: preset),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PresetTile extends StatelessWidget {
+  const _PresetTile({required this.preset});
+
+  static const _presetBackgroundLight = Color(0xFFEDE7F6);
+  static const _presetBackgroundDark = Color(0xFF2E2640);
+
+  final NetworkPreset preset;
+
+  @override
+  Widget build(BuildContext context) {
+    final viewModel = context.watch<MainViewModel>();
+    final theme = Theme.of(context);
+    final lineStatuses = viewModel.lineStatusesFor(preset.name);
+    return Card(
+      elevation: 0,
+      color: theme.brightness == Brightness.dark
+          ? _presetBackgroundDark
+          : _presetBackgroundLight,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            title: Text(preset.name),
+            subtitle: Text(_describeAssignments()),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildApplyButton(viewModel),
+                IconButton(
+                  tooltip: 'Edit',
+                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: viewModel.canEditPresets
+                      ? () => _openPresetEditor(context, presetToEdit: preset)
+                      : null,
+                ),
+                IconButton(
+                  tooltip: 'Delete',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: viewModel.canEditPresets
+                      ? () => _confirmAndDeletePreset(context, preset)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+          if (lineStatuses != null) _PresetLineResults(statuses: lineStatuses),
+        ],
+      ),
+    );
+  }
+
+  // Arrow points left like the apply button: the profile goes onto the
+  // adapter.
+  String _describeAssignments() => [
+    for (final assignment in preset.assignments)
+      '${assignment.adapterName} ← ${assignment.profileName}',
+  ].join('\n');
+
+  Widget _buildApplyButton(MainViewModel viewModel) {
+    return FilledButton.tonal(
+      onPressed: viewModel.canApplyPresets
+          ? () => viewModel.applyPreset(preset)
+          : null,
+      child: viewModel.isApplyingPreset(preset.name)
+          ? const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox.square(
+                  dimension: 12,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 8),
+                Text('Apply'),
+              ],
+            )
+          : const Text('Apply'),
+    );
+  }
+}
+
+/// Result per preset line: a spinner while waiting, then a check or cross
+/// with the outcome message.
+class _PresetLineResults extends StatelessWidget {
+  const _PresetLineResults({required this.statuses});
+
+  static const _appliedColor = Color(0xFF2E7D32);
+
+  final List<PresetLineStatus> statuses;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final status in statuses)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox.square(
+                    dimension: 16,
+                    child: _buildStateIndicator(status.state, theme),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${status.assignment.adapterName}: '
+                      '${status.message ?? 'Waiting…'}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: status.state == PresetLineState.failed
+                            ? theme.colorScheme.error
+                            : null,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStateIndicator(PresetLineState state, ThemeData theme) {
+    return switch (state) {
+      PresetLineState.pending => const Padding(
+        padding: EdgeInsets.all(2),
+        child: CircularProgressIndicator(strokeWidth: 1.5),
+      ),
+      PresetLineState.applied => const Icon(
+        Icons.check_circle,
+        size: 16,
+        color: _appliedColor,
+      ),
+      PresetLineState.failed => Icon(
+        Icons.cancel,
+        size: 16,
+        color: theme.colorScheme.error,
+      ),
+    };
+  }
+}
+
+Future<void> _openPresetEditor(
+  BuildContext context, {
+  required NetworkPreset? presetToEdit,
+}) async {
+  final mainViewModel = context.read<MainViewModel>();
+  final savedPreset = await showDialog<NetworkPreset>(
+    context: context,
+    builder: (_) => ChangeNotifierProvider(
+      create: (_) => NetworkPresetEditorViewModel(
+        originalPreset: presetToEdit,
+        availableAdapterNames: [
+          for (final adapter in mainViewModel.adapters) adapter.name,
+        ],
+        profileNames: [
+          for (final profile in mainViewModel.profiles) profile.name,
+        ],
+        otherPresetNames: mainViewModel.presetNamesOtherThan(presetToEdit),
+      ),
+      child: const NetworkPresetEditorView(),
+    ),
+  );
+  if (savedPreset == null) return;
+  await mainViewModel.savePreset(savedPreset, originalPreset: presetToEdit);
+}
+
+Future<void> _confirmAndDeletePreset(
+  BuildContext context,
+  NetworkPreset preset,
+) async {
+  final mainViewModel = context.read<MainViewModel>();
+  final isConfirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Delete preset?'),
+      content: Text('"${preset.name}" will be removed. Its profiles are kept.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+  if (isConfirmed ?? false) await mainViewModel.deletePreset(preset);
 }

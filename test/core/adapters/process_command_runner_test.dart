@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:network_profile_switcher/core/adapters/process_command_runner.dart';
+import 'package:network_adapter_tool/core/adapters/process_command_runner.dart';
 
 // Uses harmless cmd.exe built-ins only; never netsh.
 void main() {

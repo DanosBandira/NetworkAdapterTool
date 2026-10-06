@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:network_profile_switcher/core/contracts/host_pinger.dart';
-import 'package:network_profile_switcher/core/models/ping_target.dart';
-import 'package:network_profile_switcher/core/reachability/ping_targets_checker.dart';
+import 'package:network_adapter_tool/core/contracts/host_pinger.dart';
+import 'package:network_adapter_tool/core/models/ping_target.dart';
+import 'package:network_adapter_tool/core/reachability/ping_targets_checker.dart';
 
 import '../../fakes/scripted_host_pinger.dart';
 

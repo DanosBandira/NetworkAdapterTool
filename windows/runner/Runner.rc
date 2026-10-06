@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "nl.smakman" "\0"
-            VALUE "FileDescription", "network_profile_switcher" "\0"
+            VALUE "FileDescription", "Network Adapter Tool" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "network_profile_switcher" "\0"
+            VALUE "InternalName", "network_adapter_tool" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 nl.smakman. All rights reserved." "\0"
-            VALUE "OriginalFilename", "network_profile_switcher.exe" "\0"
-            VALUE "ProductName", "network_profile_switcher" "\0"
+            VALUE "OriginalFilename", "network_adapter_tool.exe" "\0"
+            VALUE "ProductName", "Network Adapter Tool" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

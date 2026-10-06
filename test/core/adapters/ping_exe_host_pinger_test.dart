@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:network_profile_switcher/core/adapters/ping_exe_host_pinger.dart';
+import 'package:network_adapter_tool/core/adapters/ping_exe_host_pinger.dart';
 
 import '../../fakes/recording_command_runner.dart';
 

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:network_profile_switcher/core/models/ipv4_address.dart';
+import 'package:network_adapter_tool/core/models/ipv4_address.dart';
 
 void main() {
   Ipv4Address address(String text) => Ipv4Address.tryParse(text)!;

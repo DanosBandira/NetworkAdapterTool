@@ -1,3 +1,3 @@
-# network_profile_switcher
+# Network Adapter Tool
 
 A new Flutter project.

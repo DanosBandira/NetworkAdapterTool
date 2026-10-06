@@ -1,4 +1,4 @@
-name: network_profile_switcher
+name: network_adapter_tool
 description: "Switch Windows network adapters between DHCP and static IP profiles."
 publish_to: 'none'
 version: 0.1.0+1

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:network_profile_switcher/core/models/addressing_mode.dart';
-import 'package:network_profile_switcher/core/models/network_profile.dart';
-import 'package:network_profile_switcher/core/models/ping_target.dart';
+import 'package:network_adapter_tool/core/models/addressing_mode.dart';
+import 'package:network_adapter_tool/core/models/network_profile.dart';
+import 'package:network_adapter_tool/core/models/ping_target.dart';
 
 void main() {
   test('static profile survives a JSON round trip', () {
