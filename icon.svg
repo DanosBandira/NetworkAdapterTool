@@ -1,13 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100%" height="100%">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="29 50 142 142" width="100%" height="100%">
   <defs>
     <!-- Zachte schaduw voor diepte -->
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
       <feDropShadow dx="0" dy="4" stdDeviation="3" flood-opacity="0.15" />
     </filter>
   </defs>
-
-  <!-- Achtergrond cirkel (symbool icoon) -->
-  <circle cx="100" cy="100" r="90" fill="#EBF3F5" />
 
   <!-- Oren -->
   <ellipse cx="42" cy="102" rx="12" ry="16" fill="#E8B088" />

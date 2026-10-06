@@ -409,6 +409,40 @@ void main() {
       );
     });
 
+    test('pings the profiles of a preset without applying it', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      expect(viewModel.pingableProfilesOf(linePreset), [lineProfile]);
+      expect(viewModel.canPingPreset(linePreset), isTrue);
+
+      final pinging = viewModel.pingPreset(linePreset);
+      expect(viewModel.isPingingPreset(linePreset), isTrue);
+      await pinging;
+
+      expect(configurator.appliedProfiles, isEmpty);
+      expect(
+        viewModel.pingStatusesFor('Line 1')!.single.state,
+        PingState.reachable,
+      );
+      expect(viewModel.isPingingPreset(linePreset), isFalse);
+    });
+
+    test('cannot ping a preset whose profiles have no ping targets', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      const officeOnlyPreset = NetworkPreset(
+        name: 'Office only',
+        assignments: [
+          PresetAssignment(adapterName: 'Ethernet', profileName: 'Office'),
+        ],
+      );
+
+      expect(viewModel.canPingPreset(officeOnlyPreset), isFalse);
+    });
+
     test('refuses to delete a profile used by a preset', () async {
       final viewModel = await initializedViewModel(
         FakeNetworkAdapterReader([ethernet()]),

@@ -81,6 +81,8 @@ test/
 ├── core/ · app/                               (mirror lib/)
 └── fakes/                                     (fake reader/configurator/runner/repository)
 docs/architecture.html                         (layers + dependency graph)
+icon.svg                                       (app icon source)
+tool/svg_to_ico.py                             (icon.svg → app_icon.ico)
 ```
 
 ## Responsibilities
@@ -209,6 +211,10 @@ prefix length to a dotted subnet mask. The reader sits behind
   targets of all successfully applied profiles are pinged. Renaming a profile
   updates every preset in the same save; deleting a profile used by a preset
   is refused with a message naming the presets.
+- Preset "Ping" button (shown when at least one of its profiles has ping
+  targets): pings all those profiles concurrently without applying anything.
+  Results show under the profile cards and, grouped per profile, in the
+  preset card.
 - `profiles.json` is `{"formatVersion": 3, "profiles": [...], "presets":
   [...]}` (2 added `pingTargets`, 3 added `presets`; older files still load),
   written to a
@@ -233,6 +239,13 @@ prefix length to a dotted subnet mask. The reader sits behind
 - View models are tested with the fakes in `test/fakes/` and a real
   `NetworkProfileApplier`; widget tests in `test/app/views/` render the real
   views against those view models.
+
+- App icon: `icon.svg` (repo root, supplied by the user) is the source;
+  `windows/runner/resources/app_icon.ico` (16–256 px) is generated from it
+  with `python tool/svg_to_ico.py icon.svg windows/runner/resources/app_icon.ico <work dir>`
+  (headless Edge renders, standard-library Python packs the .ico; no extra
+  packages). Rebuild afterwards; Explorer may show the old icon until its
+  icon cache refreshes.
 
 ## UI conventions
 

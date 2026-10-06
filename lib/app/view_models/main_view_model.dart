@@ -113,6 +113,27 @@ class MainViewModel extends ChangeNotifier {
   bool isApplyingPreset(String presetName) =>
       _presetNameBeingApplied == presetName;
 
+  /// The profiles a preset uses that have ping targets, each once, in preset
+  /// order. Lines whose profile no longer exists are skipped.
+  List<NetworkProfile> pingableProfilesOf(NetworkPreset preset) {
+    final profiles = <NetworkProfile>[];
+    for (final assignment in preset.assignments) {
+      final profile = _profileNamed(assignment.profileName);
+      if (profile != null &&
+          profile.pingTargets.isNotEmpty &&
+          !profiles.contains(profile)) {
+        profiles.add(profile);
+      }
+    }
+    return profiles;
+  }
+
+  bool isPingingPreset(NetworkPreset preset) =>
+      pingableProfilesOf(preset).any((profile) => isPinging(profile.name));
+
+  bool canPingPreset(NetworkPreset preset) =>
+      pingableProfilesOf(preset).isNotEmpty && !isPingingPreset(preset);
+
   List<NetworkPreset> presetsUsingProfile(String profileName) => [
     for (final preset in _library.presets)
       if (preset.usesProfile(profileName)) preset,
@@ -193,6 +214,15 @@ class MainViewModel extends ChangeNotifier {
     _finishApplyingPreset(preset);
     await Future.wait([
       for (final profile in appliedProfiles) pingTargetsOf(profile),
+    ]);
+  }
+
+  /// Pings the targets of every profile in [preset] at the same time, without
+  /// applying anything. Results appear per profile ([pingStatusesFor]).
+  Future<void> pingPreset(NetworkPreset preset) async {
+    if (!canPingPreset(preset)) return;
+    await Future.wait([
+      for (final profile in pingableProfilesOf(preset)) pingTargetsOf(profile),
     ]);
   }
 

@@ -816,6 +816,10 @@ class _PresetTile extends StatelessWidget {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (viewModel.pingableProfilesOf(preset).isNotEmpty) ...[
+                  _buildPingButton(viewModel),
+                  const SizedBox(width: 8),
+                ],
                 _buildApplyButton(viewModel),
                 IconButton(
                   tooltip: 'Edit',
@@ -835,6 +839,7 @@ class _PresetTile extends StatelessWidget {
             ),
           ),
           if (lineStatuses != null) _PresetLineResults(statuses: lineStatuses),
+          ..._buildPingResultsPerProfile(context, viewModel),
         ],
       ),
     );
@@ -846,6 +851,48 @@ class _PresetTile extends StatelessWidget {
     for (final assignment in preset.assignments)
       '${assignment.adapterName} ← ${assignment.profileName}',
   ].join('\n');
+
+  // Same results as under the profile cards, repeated here so the whole
+  // preset's reachability is visible in one place.
+  List<Widget> _buildPingResultsPerProfile(
+    BuildContext context,
+    MainViewModel viewModel,
+  ) {
+    return [
+      for (final profile in viewModel.pingableProfilesOf(preset))
+        if (viewModel.pingStatusesFor(profile.name) case final statuses?) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+            child: Text(
+              'Ping ${profile.name}',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+          ),
+          _PingResults(statuses: statuses),
+        ],
+    ];
+  }
+
+  Widget _buildPingButton(MainViewModel viewModel) {
+    return OutlinedButton(
+      onPressed: viewModel.canPingPreset(preset)
+          ? () => viewModel.pingPreset(preset)
+          : null,
+      child: viewModel.isPingingPreset(preset)
+          ? const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox.square(
+                  dimension: 12,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 8),
+                Text('Ping'),
+              ],
+            )
+          : const Text('Ping'),
+    );
+  }
 
   Widget _buildApplyButton(MainViewModel viewModel) {
     return FilledButton.tonal(
