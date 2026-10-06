@@ -6,6 +6,7 @@ import '../../core/models/network_profile.dart';
 import '../view_models/main_view_model.dart';
 import '../view_models/network_adapter_view_model.dart';
 import '../view_models/network_profile_editor_view_model.dart';
+import 'left_arrow_border.dart';
 import 'network_profile_editor_view.dart';
 
 /// Main window: adapters on the left, profiles on the right, apply actions
@@ -141,6 +142,10 @@ class _AdapterTile extends StatelessWidget {
   static const _connectedBackgroundDark = Color(0xFF1E3A2A);
   static const _notConnectedBackgroundLight = Color(0xFFFCE8E6);
   static const _notConnectedBackgroundDark = Color(0xFF3D2222);
+  static const _selectedConnectedBackgroundLight = Color(0xFFB4DDBF);
+  static const _selectedConnectedBackgroundDark = Color(0xFF2E5C40);
+  static const _selectedNotConnectedBackgroundLight = Color(0xFFF4B6AE);
+  static const _selectedNotConnectedBackgroundDark = Color(0xFF633030);
 
   final NetworkAdapterViewModel adapter;
   final bool isSelected;
@@ -159,8 +164,6 @@ class _AdapterTile extends StatelessWidget {
       margin: EdgeInsets.zero,
       color: _connectionBackground(theme.brightness),
       clipBehavior: Clip.antiAlias,
-      // The background shows the connection state, so selection is shown
-      // with a border instead.
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: isSelected
@@ -219,12 +222,19 @@ class _AdapterTile extends StatelessWidget {
     );
   }
 
+  // The selected card keeps its connection color, only a darker shade.
   Color _connectionBackground(Brightness brightness) {
     final isDark = brightness == Brightness.dark;
-    if (adapter.isConnected) {
-      return isDark ? _connectedBackgroundDark : _connectedBackgroundLight;
-    }
-    return isDark ? _notConnectedBackgroundDark : _notConnectedBackgroundLight;
+    return switch ((adapter.isConnected, isSelected, isDark)) {
+      (true, false, false) => _connectedBackgroundLight,
+      (true, false, true) => _connectedBackgroundDark,
+      (true, true, false) => _selectedConnectedBackgroundLight,
+      (true, true, true) => _selectedConnectedBackgroundDark,
+      (false, false, false) => _notConnectedBackgroundLight,
+      (false, false, true) => _notConnectedBackgroundDark,
+      (false, true, false) => _selectedNotConnectedBackgroundLight,
+      (false, true, true) => _selectedNotConnectedBackgroundDark,
+    };
   }
 }
 
@@ -285,6 +295,8 @@ class _ProfileTile extends StatelessWidget {
 
   static const _profileBackgroundLight = Color(0xFFFFF6D5);
   static const _profileBackgroundDark = Color(0xFF3A3320);
+  static const _selectedProfileBackgroundLight = Color(0xFFFFE38C);
+  static const _selectedProfileBackgroundDark = Color(0xFF5E5024);
 
   final NetworkProfile profile;
   final bool isSelected;
@@ -297,11 +309,7 @@ class _ProfileTile extends StatelessWidget {
     final pingStatuses = viewModel.pingStatusesFor(profile.name);
     return Card(
       elevation: 0,
-      color: theme.brightness == Brightness.dark
-          ? _profileBackgroundDark
-          : _profileBackgroundLight,
-      // Same as adapter cards: the background is fixed, so selection is
-      // shown with a border.
+      color: _profileBackground(theme.brightness),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: isSelected
@@ -362,6 +370,16 @@ class _ProfileTile extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Color _profileBackground(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+    if (isSelected) {
+      return isDark
+          ? _selectedProfileBackgroundDark
+          : _selectedProfileBackgroundLight;
+    }
+    return isDark ? _profileBackgroundDark : _profileBackgroundLight;
   }
 
   String _describeProfile(NetworkProfile profile) {
@@ -451,27 +469,57 @@ class _ActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<MainViewModel>();
+    // "Switch to DHCP" is hidden for now; MainViewModel still offers
+    // switchSelectedAdapterToDhcp so the button can return.
     return Padding(
       padding: const EdgeInsets.all(12),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(child: _StatusLine(message: viewModel.statusMessage)),
-          const SizedBox(width: 12),
-          OutlinedButton(
-            onPressed: viewModel.canSwitchSelectedAdapterToDhcp
-                ? viewModel.switchSelectedAdapterToDhcp
-                : null,
-            child: const Text('Switch to DHCP'),
+          Center(
+            child: _ApplyArrowButton(
+              onPressed: viewModel.canApplySelectedProfile
+                  ? viewModel.applySelectedProfileToSelectedAdapter
+                  : null,
+            ),
           ),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: viewModel.canApplySelectedProfile
-                ? viewModel.applySelectedProfileToSelectedAdapter
-                : null,
-            child: const Text('Apply profile to selected adapter'),
-          ),
+          const SizedBox(height: 8),
+          _StatusLine(message: viewModel.statusMessage),
         ],
       ),
+    );
+  }
+}
+
+/// The main action, shaped as an arrow pointing from the profiles (right)
+/// to the adapters (left).
+class _ApplyArrowButton extends StatelessWidget {
+  const _ApplyArrowButton({required this.onPressed});
+
+  static const _height = 52.0;
+
+  // Orange stands out from the green, red and yellow cards; the disabled
+  // state keeps the theme's grey so it is clear when nothing can be applied.
+  static const _background = Color(0xFFF57C00);
+  static const _foreground = Colors.white;
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    const headWidth = _height * LeftArrowBorder.headWidthFactor;
+    return FilledButton(
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        shape: const LeftArrowBorder(),
+        backgroundColor: _background,
+        foregroundColor: _foreground,
+        minimumSize: const Size(0, _height),
+        // Extra room on the left keeps the text out of the arrow head.
+        padding: const EdgeInsets.fromLTRB(headWidth + 12, 0, 28, 0),
+        textStyle: Theme.of(context).textTheme.titleMedium,
+      ),
+      child: const Text('Apply profile to selected adapter'),
     );
   }
 }

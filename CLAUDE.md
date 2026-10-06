@@ -220,10 +220,10 @@ prefix length to a dotted subnet mask. The reader sits behind
   `Wrap` so rows grow to the tallest card) with a compact layout: header row
   with icon, name and DHCP/Static, then status and details.
 - Adapter cards: light green background when connected, light red otherwise
-  (muted variants in dark mode); the selected card gets a primary-colored
-  border because the background already encodes the connection state.
-- Profile cards: light yellow background (muted in dark mode), selection also
-  shown with a border.
+  (muted variants in dark mode). The selected card gets a darker shade of its
+  own color plus a primary-colored border.
+- Profile cards: light yellow background (muted in dark mode); the selected
+  card gets a darker yellow plus the border.
 - Each panel has a search field: adapters match on name, description and IP;
   profiles on name, IP and gateway (case-insensitive). Searching only hides
   entries; the selection is kept.
@@ -240,9 +240,15 @@ prefix length to a dotted subnet mask. The reader sits behind
 
 ## UI
 
-- Main window: adapter list (name, status, current IP, DHCP/static) on the
-  left, profile list on the right, "Apply profile to selected adapter" button,
-  and a "Switch to DHCP" shortcut.
+- Main window: adapter grid (name, status, current IP, DHCP/static) on the
+  left, profile list on the right. Below them, centered, the "Apply profile
+  to selected adapter" button shaped as a left-pointing arrow
+  (`LeftArrowBorder`: the profile goes right-to-left onto the adapter), orange
+  (`0xFFF57C00`, white text; theme grey when disabled), with the status line
+  under it.
+- The "Switch to DHCP" button is hidden for now (user request, 2026-10-06);
+  `MainViewModel.switchSelectedAdapterToDhcp` and its tests remain so it can
+  come back.
 - Profile editor: create, edit, delete profiles with inline validation.
 
 ## Build order
