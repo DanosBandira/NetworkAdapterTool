@@ -151,7 +151,15 @@ prefix length to a dotted subnet mask. The reader sits behind
   (`[Console]::OutputEncoding = [Text.Encoding]::UTF8`) so adapter names with
   non-ASCII characters survive.
 - After applying, `NetworkProfileApplier` re-reads the adapter and compares,
-  because netsh can report success before the setting is active.
+  because netsh can report success before the setting is active. It retries
+  the read (default 3 attempts, 1 s apart) and returns a sealed
+  `ApplyProfileOutcome` (`ProfileApplied`, `ProfileInvalid`,
+  `ProfileRejectedBySystem`, `ProfileNotActive` with per-setting mismatches,
+  `ProfileNotVerified`) so the UI must handle every case.
+- A DHCP profile is verified on addressing mode only; right after switching
+  the adapter may still hold an APIPA address.
+- `docs/architecture.html` visualizes the layers; update it when components
+  are added or a build step is completed.
 - Use `Platform.environment['APPDATA']` for the profile path instead of
   `path_provider`, which would add a company/app subfolder.
 - `profiles.json` is `{"formatVersion": 1, "profiles": [...]}`, written to a
