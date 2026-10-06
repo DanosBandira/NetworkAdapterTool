@@ -97,9 +97,12 @@ applying it.
 netsh interface ipv4 set address name=<adapter> source=dhcp
 netsh interface ipv4 set dnsservers name=<adapter> source=dhcp
 
-netsh interface ipv4 set address name=<adapter> source=static address=<ip> mask=<mask> [gateway=<gateway>]
+netsh interface ipv4 set address name=<adapter> source=static address=<ip> mask=<mask> gateway=<gateway|none>
 netsh interface ipv4 set dnsservers name=<adapter> source=static address=<dns1> register=primary validate=no
 netsh interface ipv4 add dnsservers name=<adapter> address=<dns2> index=2 validate=no
+
+# static profile without DNS servers
+netsh interface ipv4 set dnsservers name=<adapter> source=static address=none
 ```
 
 ## Reading adapters
@@ -122,10 +125,14 @@ prefix length to a dotted subnet mask. The reader sits behind
 
 - Pass arguments to `Process.run` as a list, never as one concatenated string,
   so adapter names with spaces need no manual quoting.
-- Gateway and DNS are optional; omit the argument entirely when not set
-  (direct machine connections usually have neither).
+- Gateway and DNS are optional in a profile (direct machine connections
+  usually have neither). When not set, clear them explicitly with `none`
+  instead of omitting the argument, otherwise values from a previously
+  applied profile linger.
 - netsh returns exit code 1 when DHCP is already enabled on the interface;
-  the configurator must treat that case as success.
+  the configurator treats that as success for the DHCP commands only. netsh
+  uses the same code for real errors, so the applier's verification step is
+  what catches those.
 - netsh output is localized and in the OEM code page; rely on exit codes, not
   on parsing netsh text.
 - Force UTF-8 output in the PowerShell script
