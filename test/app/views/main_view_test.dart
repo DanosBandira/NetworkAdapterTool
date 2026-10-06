@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:network_adapter_tool/app/view_models/main_view_model.dart';
@@ -18,8 +19,10 @@ import '../../fakes/scripted_host_pinger.dart';
 
 void main() {
   late MainViewModel viewModel;
+  late RecordingNetworkAdapterConfigurator configurator;
 
   setUp(() async {
+    configurator = RecordingNetworkAdapterConfigurator();
     final reader = FakeNetworkAdapterReader([
       const NetworkAdapter(
         name: 'Ethernet',
@@ -32,7 +35,7 @@ void main() {
     ]);
     final applier = NetworkProfileApplier(
       validator: const NetworkProfileValidator(),
-      configurator: RecordingNetworkAdapterConfigurator(),
+      configurator: configurator,
       reader: reader,
     );
     viewModel = MainViewModel(
@@ -61,6 +64,71 @@ void main() {
     await tester.pumpWidget(NetworkAdapterToolApp(mainViewModel: viewModel));
   }
 
+  Future<void> doubleClick(WidgetTester tester, Finder target) async {
+    await tester.tap(target);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(target);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+    'shows info and refresh next to each other in the adapter header',
+    (tester) async {
+      await showApp(tester);
+
+      final infoIcon = find.byIcon(Icons.info_outline);
+      final refreshButton = find.byTooltip('Refresh adapters');
+      expect(infoIcon, findsOneWidget);
+      expect(refreshButton, findsOneWidget);
+      expect(
+        tester.getCenter(refreshButton).dy,
+        closeTo(tester.getCenter(infoIcon).dy, 1),
+      );
+      expect(
+        tester.getCenter(refreshButton).dx,
+        greaterThan(tester.getCenter(infoIcon).dx),
+      );
+    },
+  );
+
+  testWidgets('double-clicking an adapter opens its settings', (tester) async {
+    await showApp(tester);
+
+    await doubleClick(tester, find.text('Ethernet'));
+
+    expect(find.text('Configure Ethernet'), findsOneWidget);
+    expect(
+      find.text('Applied directly; not saved as a profile.'),
+      findsOneWidget,
+    );
+    // The adapter uses DHCP, so the dialog starts on DHCP without fields.
+    expect(find.text('IP address'), findsNothing);
+  });
+
+  testWidgets('applies settings entered in the adapter dialog directly', (
+    tester,
+  ) async {
+    await showApp(tester);
+    await doubleClick(tester, find.text('Ethernet'));
+
+    await tester.tap(find.text('Static IP'));
+    await tester.pump();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'IP address'),
+      '10.100.10.4',
+    );
+    await tester.tap(find.text('Apply'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Configure Ethernet'), findsNothing);
+    final (appliedSettings, adapterName) = configurator.appliedProfiles.single;
+    expect(adapterName, 'Ethernet');
+    expect(appliedSettings.addressingMode, AddressingMode.staticIp);
+    expect(appliedSettings.ipAddress, '10.100.10.4');
+    expect(appliedSettings.subnetMask, '255.255.255.0');
+    expect(viewModel.profiles.map((profile) => profile.name), ['Machine']);
+  });
+
   testWidgets('colors a connected adapter green, darker when selected', (
     tester,
   ) async {
@@ -77,7 +145,9 @@ void main() {
     await tester.tap(find.text('Ethernet'));
     await tester.pump();
 
+    // Selected right away, without waiting for the double-tap timeout.
     expect(adapterCard().color, const Color(0xFFB4DDBF));
+    await tester.pump(kDoubleTapTimeout);
     expect(adapterCardBorder().width, 2);
   });
 
@@ -180,7 +250,7 @@ void main() {
 
     await tester.tap(find.text('Ethernet'));
     await tester.tap(find.text('Machine'));
-    await tester.pump();
+    await tester.pump(kDoubleTapTimeout);
 
     expect(applyButton().onPressed, isNotNull);
   });

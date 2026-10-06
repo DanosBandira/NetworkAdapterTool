@@ -241,6 +241,59 @@ void main() {
     });
   });
 
+  group('adapter settings', () {
+    test('start from the current settings of a static adapter', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      const staticAdapter = NetworkAdapter(
+        name: 'Ethernet',
+        description: 'Intel(R) Ethernet',
+        status: NetworkAdapterStatus.disconnected,
+        addressingMode: AddressingMode.staticIp,
+        ipAddress: '10.100.10.4',
+        subnetMask: '255.255.255.0',
+        defaultGateway: '10.100.10.1',
+        dnsServers: ['10.100.10.1'],
+      );
+
+      final settings = viewModel.currentSettingsOf(staticAdapter);
+
+      expect(settings.name, MainViewModel.manualSettingsName);
+      expect(settings.addressingMode, AddressingMode.staticIp);
+      expect(settings.ipAddress, '10.100.10.4');
+      expect(settings.defaultGateway, '10.100.10.1');
+      expect(settings.dnsServers, ['10.100.10.1']);
+    });
+
+    test('start empty on DHCP for a DHCP adapter', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      final settings = viewModel.currentSettingsOf(ethernet());
+
+      expect(settings.addressingMode, AddressingMode.dhcp);
+      expect(settings.ipAddress, isNull);
+    });
+
+    test('apply directly without storing a profile', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      await viewModel.applyManualSettings(
+        viewModel.currentSettingsOf(ethernet()),
+        'Ethernet',
+      );
+
+      expect(configurator.appliedProfiles.single.$2, 'Ethernet');
+      expect(viewModel.selectedAdapterName, 'Ethernet');
+      expect(viewModel.statusMessage?.kind, StatusKind.success);
+      expect(repository.storedProfiles, [machineProfile, officeProfile]);
+    });
+  });
+
   group('ping targets', () {
     const plc = PingTarget(ipAddress: '10.100.10.1', name: 'PLC');
     const hmi = PingTarget(ipAddress: '10.100.10.2', name: 'HMI');

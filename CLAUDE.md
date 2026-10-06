@@ -74,6 +74,8 @@ lib/
     │   └── network_preset_editor_view_model.dart
     └── views/
         ├── main_view.dart
+        ├── adapter_settings_view.dart          (double-click: configure adapter directly)
+        ├── ipv4_settings_fields.dart          (shared DHCP/static + IPv4 fields)
         ├── left_arrow_border.dart
         ├── network_profile_editor_view.dart
         └── network_preset_editor_view.dart
@@ -285,6 +287,9 @@ prefix length to a dotted subnet mask. The reader sits behind
 
 ## UI
 
+- The window always opens maximized (`SW_SHOWMAXIMIZED` in
+  `windows/runner/win32_window.cpp`); 1100×680 from `main.cpp` is the
+  restored size.
 - Main window: adapter grid (name, status, current IP, DHCP/static) on the
   left; on the right the profile list (top half) and the preset list (bottom
   half, light purple cards with an "Apply" button and per-line results). Below them, centered, the "Apply profile
@@ -292,6 +297,15 @@ prefix length to a dotted subnet mask. The reader sits behind
   (`LeftArrowBorder`: the profile goes right-to-left onto the adapter), orange
   (`0xFFF57C00`, white text; theme grey when disabled), with the status line
   under it.
+- Double-clicking an adapter card opens `AdapterSettingsView`: DHCP/static
+  and the IPv4 fields, seeded from the adapter's current settings (a DHCP
+  adapter starts empty). Apply builds an unsaved profile named
+  "Manual settings" and runs it through `NetworkProfileApplier` like any
+  profile; nothing is stored. The dialog reuses
+  `NetworkProfileEditorViewModel` and the shared `Ipv4SettingsFields` widget
+  (also used by the profile editor). Cards select on the raw pointer-down
+  (`Listener`), because a double-tap handler delays `onTap`/`onTapDown`
+  until the double-tap timeout.
 - The "Switch to DHCP" button is hidden for now (user request, 2026-10-06);
   `MainViewModel.switchSelectedAdapterToDhcp` and its tests remain so it can
   come back.

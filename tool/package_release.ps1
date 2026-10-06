@@ -13,6 +13,12 @@
 param([switch]$SkipBuild)
 
 $ErrorActionPreference = 'Stop'
+
+# Terminals opened before Flutter was added to PATH keep the old PATH and
+# cannot find `flutter`; reload it from the registry.
+$env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' +
+    [Environment]::GetEnvironmentVariable('Path', 'Machine')
+
 $repositoryRoot = Split-Path $PSScriptRoot -Parent
 $releaseFolder = Join-Path $repositoryRoot 'build\windows\x64\runner\Release'
 $distFolder = Join-Path $repositoryRoot 'dist'

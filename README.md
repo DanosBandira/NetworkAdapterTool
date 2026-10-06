@@ -11,6 +11,9 @@ a machine's subnet, check that the devices answer, and switch back.
 - **Profiles**: named DHCP or static settings (IP, mask, optional gateway and
   DNS servers), validated while you type. Apply a profile to the selected
   adapter with the orange arrow button.
+- **Direct configuration**: double-click an adapter to switch it between
+  DHCP and static and enter IP, mask, gateway and DNS right away, without
+  creating a profile.
 - **Verification**: after applying, the adapter is read back and compared, so
   you see exactly which setting did not take effect.
 - **Ping targets**: per profile, addresses (with an optional name such as

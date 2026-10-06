@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../core/contracts/network_adapter_reader.dart';
 import '../../core/contracts/network_profile_repository.dart';
 import '../../core/models/addressing_mode.dart';
+import '../../core/models/network_adapter.dart';
 import '../../core/models/network_preset.dart';
 import '../../core/models/network_profile.dart';
 import '../../core/models/network_profile_library.dart';
@@ -31,6 +32,9 @@ class MainViewModel extends ChangeNotifier {
     name: 'DHCP',
     addressingMode: AddressingMode.dhcp,
   );
+
+  /// Name of the unsaved profile built by the adapter settings dialog.
+  static const manualSettingsName = 'Manual settings';
 
   final NetworkAdapterReader _reader;
   final NetworkProfileRepository _repository;
@@ -86,6 +90,7 @@ class MainViewModel extends ChangeNotifier {
   bool get canSwitchSelectedAdapterToDhcp =>
       _canChangeAdapters && _selectedAdapterName != null;
   bool get canApplyPresets => _canChangeAdapters && _libraryIsLoaded;
+  bool get canConfigureAdapters => _canChangeAdapters;
 
   // Editing is blocked until loading succeeded: saving over a file that
   // failed to load would replace the user's profiles and presets.
@@ -189,12 +194,44 @@ class MainViewModel extends ChangeNotifier {
   Future<void> applySelectedProfileToSelectedAdapter() async {
     final profile = _selectedProfile;
     if (!canApplySelectedProfile || profile == null) return;
-    await _applyProfileToSelectedAdapter(profile);
+    await _applyProfileToAdapter(profile, _selectedAdapterName!);
   }
 
   Future<void> switchSelectedAdapterToDhcp() async {
     if (!canSwitchSelectedAdapterToDhcp) return;
-    await _applyProfileToSelectedAdapter(_dhcpShortcutProfile);
+    await _applyProfileToAdapter(_dhcpShortcutProfile, _selectedAdapterName!);
+  }
+
+  /// The adapter's current IPv4 settings as an unsaved profile, the starting
+  /// point of the adapter settings dialog. A DHCP adapter starts as DHCP with
+  /// empty fields, since its current address is only leased.
+  NetworkProfile currentSettingsOf(NetworkAdapter adapter) {
+    if (adapter.addressingMode != AddressingMode.staticIp) {
+      return const NetworkProfile(
+        name: manualSettingsName,
+        addressingMode: AddressingMode.dhcp,
+      );
+    }
+    return NetworkProfile(
+      name: manualSettingsName,
+      addressingMode: AddressingMode.staticIp,
+      ipAddress: adapter.ipAddress,
+      subnetMask: adapter.subnetMask,
+      defaultGateway: adapter.defaultGateway,
+      dnsServers: adapter.dnsServers,
+    );
+  }
+
+  /// Applies settings entered directly for one adapter, without storing them
+  /// as a profile. Goes through the same validation, disconnected-adapter
+  /// check and verification as a saved profile.
+  Future<void> applyManualSettings(
+    NetworkProfile settings,
+    String adapterName,
+  ) async {
+    if (!canConfigureAdapters) return;
+    _selectedAdapterName = adapterName;
+    await _applyProfileToAdapter(settings, adapterName);
   }
 
   /// Applies every line of [preset]; a failing line does not stop the rest.
@@ -378,8 +415,10 @@ class MainViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> _applyProfileToSelectedAdapter(NetworkProfile profile) async {
-    final adapterName = _selectedAdapterName!;
+  Future<void> _applyProfileToAdapter(
+    NetworkProfile profile,
+    String adapterName,
+  ) async {
     _isApplying = true;
     _statusMessage = StatusMessage.progress(
       'Applying "${profile.name}" to $adapterName…',

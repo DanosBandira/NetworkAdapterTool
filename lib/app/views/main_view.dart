@@ -8,6 +8,7 @@ import '../view_models/main_view_model.dart';
 import '../view_models/network_adapter_view_model.dart';
 import '../view_models/network_preset_editor_view_model.dart';
 import '../view_models/network_profile_editor_view_model.dart';
+import 'adapter_settings_view.dart';
 import 'left_arrow_border.dart';
 import 'network_preset_editor_view.dart';
 import 'network_profile_editor_view.dart';
@@ -19,20 +20,8 @@ class MainView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final viewModel = context.watch<MainViewModel>();
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Network Adapter Tool'),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh adapters',
-            icon: const Icon(Icons.refresh),
-            onPressed: viewModel.isLoadingAdapters || viewModel.isApplying
-                ? null
-                : viewModel.refreshAdapters,
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Network Adapter Tool')),
       body: Column(
         children: [
           const Expanded(
@@ -72,7 +61,31 @@ class _AdapterPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _PanelHeader(title: 'Adapters'),
+        _PanelHeader(
+          title: 'Adapters',
+          action: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Double-clicking is not visible on the cards, so it is
+              // explained here.
+              const Tooltip(
+                message:
+                    'Double-click an adapter to change its settings directly',
+                child: Padding(
+                  padding: EdgeInsets.all(8),
+                  child: Icon(Icons.info_outline, size: 20),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Refresh adapters',
+                icon: const Icon(Icons.refresh),
+                onPressed: viewModel.isLoadingAdapters || viewModel.isApplying
+                    ? null
+                    : viewModel.refreshAdapters,
+              ),
+            ],
+          ),
+        ),
         _SearchField(
           hint: 'Search adapters by name, description or IP',
           onChanged: viewModel.searchAdapters,
@@ -124,6 +137,9 @@ class _AdapterGrid extends StatelessWidget {
                     adapter: adapter,
                     isSelected: adapter.name == viewModel.selectedAdapterName,
                     onTap: () => viewModel.selectAdapter(adapter.name),
+                    onDoubleTap: viewModel.canConfigureAdapters
+                        ? () => _openAdapterSettings(context, adapter)
+                        : null,
                   ),
                 ),
             ],
@@ -149,6 +165,7 @@ class _AdapterTile extends StatelessWidget {
     required this.adapter,
     required this.isSelected,
     required this.onTap,
+    required this.onDoubleTap,
   });
 
   static const _connectedBackgroundLight = Color(0xFFE6F4EA);
@@ -163,6 +180,9 @@ class _AdapterTile extends StatelessWidget {
   final NetworkAdapterViewModel adapter;
   final bool isSelected;
   final VoidCallback onTap;
+
+  /// Opens the adapter settings dialog; `null` while adapters are busy.
+  final VoidCallback? onDoubleTap;
 
   @override
   Widget build(BuildContext context) {
@@ -183,52 +203,59 @@ class _AdapterTile extends StatelessWidget {
             ? BorderSide(color: colors.primary, width: 2)
             : BorderSide.none,
       ),
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.lan_outlined, color: statusColor, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      adapter.name,
-                      style: theme.textTheme.titleSmall,
-                      overflow: TextOverflow.ellipsis,
+      // Select on the raw pointer-down: with a double-tap handler, the tap
+      // gesture (even onTapDown) only resolves after the double-tap timeout,
+      // which made selecting feel laggy.
+      child: Listener(
+        onPointerDown: (_) => onTap(),
+        child: InkWell(
+          onTap: onTap,
+          onDoubleTap: onDoubleTap,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.lan_outlined, color: statusColor, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        adapter.name,
+                        style: theme.textTheme.titleSmall,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    adapter.addressingModeText,
-                    style: theme.textTheme.labelLarge,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              Text(
-                adapter.statusText,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: statusColor,
+                    const SizedBox(width: 8),
+                    Text(
+                      adapter.addressingModeText,
+                      style: theme.textTheme.labelLarge,
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                adapter.description,
-                style: detailStyle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              for (final detailLine in [
-                adapter.addressText,
-                ?adapter.gatewayText,
-                ?adapter.dnsServersText,
-              ])
-                Text(detailLine, style: detailStyle),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  adapter.statusText,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: statusColor,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  adapter.description,
+                  style: detailStyle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                for (final detailLine in [
+                  adapter.addressText,
+                  ?adapter.gatewayText,
+                  ?adapter.dnsServersText,
+                ])
+                  Text(detailLine, style: detailStyle),
+              ],
+            ),
           ),
         ),
       ),
@@ -675,6 +702,25 @@ class _EmptyPanelText extends StatelessWidget {
       ),
     );
   }
+}
+
+Future<void> _openAdapterSettings(
+  BuildContext context,
+  NetworkAdapterViewModel adapter,
+) async {
+  final mainViewModel = context.read<MainViewModel>();
+  final settings = await showDialog<NetworkProfile>(
+    context: context,
+    builder: (_) => ChangeNotifierProvider(
+      create: (_) => NetworkProfileEditorViewModel(
+        originalProfile: mainViewModel.currentSettingsOf(adapter.adapter),
+        otherProfileNames: const [],
+      ),
+      child: AdapterSettingsView(adapter: adapter),
+    ),
+  );
+  if (settings == null) return;
+  await mainViewModel.applyManualSettings(settings, adapter.name);
 }
 
 Future<void> _openProfileEditor(
