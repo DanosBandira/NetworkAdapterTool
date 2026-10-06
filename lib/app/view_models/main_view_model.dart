@@ -37,9 +37,24 @@ class MainViewModel extends ChangeNotifier {
   bool _isApplying = false;
   bool _profilesAreLoaded = false;
   StatusMessage? _statusMessage;
+  String _adapterSearchText = '';
+  String _profileSearchText = '';
 
   List<NetworkAdapterViewModel> get adapters => List.unmodifiable(_adapters);
   List<NetworkProfile> get profiles => List.unmodifiable(_profiles);
+
+  // Searching only hides list entries; the selection is kept, so typing a
+  // search never silently changes the adapter or profile that gets applied.
+  List<NetworkAdapterViewModel> get visibleAdapters => [
+    for (final adapter in _adapters)
+      if (adapter.matchesSearch(_adapterSearchText)) adapter,
+  ];
+  List<NetworkProfile> get visibleProfiles => [
+    for (final profile in _profiles)
+      if (_profileMatchesSearch(profile, _profileSearchText)) profile,
+  ];
+  String get adapterSearchText => _adapterSearchText;
+  String get profileSearchText => _profileSearchText;
   String? get selectedAdapterName => _selectedAdapterName;
   String? get selectedProfileName => _selectedProfileName;
   bool get isLoadingAdapters => _isLoadingAdapters;
@@ -82,6 +97,16 @@ class MainViewModel extends ChangeNotifier {
       _isLoadingAdapters = false;
       notifyListeners();
     }
+  }
+
+  void searchAdapters(String searchText) {
+    _adapterSearchText = searchText;
+    notifyListeners();
+  }
+
+  void searchProfiles(String searchText) {
+    _profileSearchText = searchText;
+    notifyListeners();
   }
 
   void selectAdapter(String adapterName) {
@@ -227,6 +252,15 @@ class MainViewModel extends ChangeNotifier {
         'Applied, but could not verify $adapterName: ${error.reason}',
       ),
     };
+  }
+
+  bool _profileMatchesSearch(NetworkProfile profile, String searchText) {
+    final normalizedSearch = searchText.trim().toLowerCase();
+    return [
+      profile.name,
+      ?profile.ipAddress,
+      ?profile.defaultGateway,
+    ].any((text) => text.toLowerCase().contains(normalizedSearch));
   }
 
   void _keepAdapterSelectionOnlyIfStillPresent() {

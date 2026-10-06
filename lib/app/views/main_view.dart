@@ -59,25 +59,74 @@ class _AdapterPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _PanelHeader(title: 'Adapters'),
+        _SearchField(
+          hint: 'Search adapters by name, description or IP',
+          onChanged: viewModel.searchAdapters,
+        ),
         if (viewModel.isLoadingAdapters) const LinearProgressIndicator(),
         Expanded(
-          child: viewModel.adapters.isEmpty && !viewModel.isLoadingAdapters
-              ? const _EmptyPanelText('No network adapters found.')
-              : ListView(
-                  padding: const EdgeInsets.all(8),
-                  children: [
-                    for (final adapter in viewModel.adapters)
-                      _AdapterTile(
-                        adapter: adapter,
-                        isSelected:
-                            adapter.name == viewModel.selectedAdapterName,
-                        onTap: () => viewModel.selectAdapter(adapter.name),
-                      ),
-                  ],
-                ),
+          child:
+              viewModel.visibleAdapters.isEmpty && !viewModel.isLoadingAdapters
+              ? _EmptyPanelText(
+                  viewModel.adapters.isEmpty
+                      ? 'No network adapters found.'
+                      : 'No adapters match "${viewModel.adapterSearchText}".',
+                )
+              : _AdapterGrid(viewModel: viewModel),
         ),
       ],
     );
+  }
+}
+
+/// Lays adapter cards out in 1 to 3 columns depending on the panel width,
+/// so more adapters fit on screen. Rows grow to their tallest card, because
+/// cards differ in height (gateway and DNS lines are optional).
+class _AdapterGrid extends StatelessWidget {
+  const _AdapterGrid({required this.viewModel});
+
+  static const _minimumCardWidth = 240.0;
+  static const _maximumColumns = 3;
+  static const _spacing = 8.0;
+
+  final MainViewModel viewModel;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth - 2 * _spacing;
+        final cardWidth = _cardWidthFor(availableWidth);
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(_spacing),
+          child: Wrap(
+            spacing: _spacing,
+            runSpacing: _spacing,
+            children: [
+              for (final adapter in viewModel.visibleAdapters)
+                SizedBox(
+                  width: cardWidth,
+                  child: _AdapterTile(
+                    adapter: adapter,
+                    isSelected: adapter.name == viewModel.selectedAdapterName,
+                    onTap: () => viewModel.selectAdapter(adapter.name),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  double _cardWidthFor(double availableWidth) {
+    final columns = (availableWidth / _minimumCardWidth).floor().clamp(
+      1,
+      _maximumColumns,
+    );
+    final totalSpacing = (columns - 1) * _spacing;
+    // Floor avoids a rounding overflow that would wrap the last card early.
+    return ((availableWidth - totalSpacing) / columns).floorToDouble();
   }
 }
 
@@ -99,16 +148,17 @@ class _AdapterTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final detailLines = [
-      adapter.description,
-      adapter.addressText,
-      ?adapter.gatewayText,
-      ?adapter.dnsServersText,
-    ];
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final statusColor = adapter.isConnected ? colors.primary : colors.outline;
+    final detailStyle = theme.textTheme.bodySmall?.copyWith(
+      color: colors.onSurfaceVariant,
+    );
     return Card(
       elevation: 0,
-      color: _connectionBackground(Theme.of(context).brightness),
+      margin: EdgeInsets.zero,
+      color: _connectionBackground(theme.brightness),
+      clipBehavior: Clip.antiAlias,
       // The background shows the connection state, so selection is shown
       // with a border instead.
       shape: RoundedRectangleBorder(
@@ -117,30 +167,53 @@ class _AdapterTile extends StatelessWidget {
             ? BorderSide(color: colors.primary, width: 2)
             : BorderSide.none,
       ),
-      child: ListTile(
+      child: InkWell(
         onTap: onTap,
-        leading: Icon(
-          Icons.lan_outlined,
-          color: adapter.isConnected ? colors.primary : colors.outline,
-        ),
-        title: Text(adapter.name),
-        subtitle: Text(detailLines.join('\n')),
-        isThreeLine: detailLines.length > 1,
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              adapter.addressingModeText,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-            Text(
-              adapter.statusText,
-              style: TextStyle(
-                color: adapter.isConnected ? colors.primary : colors.outline,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.lan_outlined, color: statusColor, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      adapter.name,
+                      style: theme.textTheme.titleSmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    adapter.addressingModeText,
+                    style: theme.textTheme.labelLarge,
+                  ),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 2),
+              Text(
+                adapter.statusText,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: statusColor,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                adapter.description,
+                style: detailStyle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              for (final detailLine in [
+                adapter.addressText,
+                ?adapter.gatewayText,
+                ?adapter.dnsServersText,
+              ])
+                Text(detailLine, style: detailStyle),
+            ],
+          ),
         ),
       ),
     );
@@ -174,13 +247,21 @@ class _ProfilePanel extends StatelessWidget {
                 : null,
           ),
         ),
+        _SearchField(
+          hint: 'Search profiles by name or IP',
+          onChanged: viewModel.searchProfiles,
+        ),
         Expanded(
-          child: viewModel.profiles.isEmpty
-              ? const _EmptyPanelText('No profiles yet. Add one with +.')
+          child: viewModel.visibleProfiles.isEmpty
+              ? _EmptyPanelText(
+                  viewModel.profiles.isEmpty
+                      ? 'No profiles yet. Add one with +.'
+                      : 'No profiles match "${viewModel.profileSearchText}".',
+                )
               : ListView(
                   padding: const EdgeInsets.all(8),
                   children: [
-                    for (final profile in viewModel.profiles)
+                    for (final profile in viewModel.visibleProfiles)
                       _ProfileTile(
                         profile: profile,
                         isSelected:
@@ -202,6 +283,9 @@ class _ProfileTile extends StatelessWidget {
     required this.canEdit,
   });
 
+  static const _profileBackgroundLight = Color(0xFFFFF6D5);
+  static const _profileBackgroundDark = Color(0xFF3A3320);
+
   final NetworkProfile profile;
   final bool isSelected;
   final bool canEdit;
@@ -209,11 +293,20 @@ class _ProfileTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final viewModel = context.read<MainViewModel>();
+    final theme = Theme.of(context);
     return Card(
       elevation: 0,
-      color: isSelected
-          ? Theme.of(context).colorScheme.secondaryContainer
-          : null,
+      color: theme.brightness == Brightness.dark
+          ? _profileBackgroundDark
+          : _profileBackgroundLight,
+      // Same as adapter cards: the background is fixed, so selection is
+      // shown with a border.
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: isSelected
+            ? BorderSide(color: theme.colorScheme.primary, width: 2)
+            : BorderSide.none,
+      ),
       child: ListTile(
         onTap: () => viewModel.selectProfile(profile.name),
         title: Text(profile.name),
@@ -345,6 +438,60 @@ class _PanelHeader extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Search box below a panel header, with a clear button once text is typed.
+class _SearchField extends StatefulWidget {
+  const _SearchField({required this.hint, required this.onChanged});
+
+  final String hint;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<_SearchField> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      child: TextField(
+        controller: _controller,
+        onChanged: (text) {
+          widget.onChanged(text);
+          setState(() {});
+        },
+        decoration: InputDecoration(
+          hintText: widget.hint,
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: _controller.text.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Clear search',
+                  icon: const Icon(Icons.close),
+                  onPressed: _clearSearch,
+                ),
+          isDense: true,
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
+  }
+
+  void _clearSearch() {
+    _controller.clear();
+    widget.onChanged('');
+    setState(() {});
   }
 }
 

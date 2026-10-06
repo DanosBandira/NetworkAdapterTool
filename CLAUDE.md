@@ -199,9 +199,17 @@ prefix length to a dotted subnet mask. The reader sits behind
 ## UI conventions
 
 - UI text is English, like the validator messages.
+- Adapter cards sit in a grid of 1–3 columns (minimum card width 240 px,
+  `Wrap` so rows grow to the tallest card) with a compact layout: header row
+  with icon, name and DHCP/Static, then status and details.
 - Adapter cards: light green background when connected, light red otherwise
   (muted variants in dark mode); the selected card gets a primary-colored
   border because the background already encodes the connection state.
+- Profile cards: light yellow background (muted in dark mode), selection also
+  shown with a border.
+- Each panel has a search field: adapters match on name, description and IP;
+  profiles on name, IP and gateway (case-insensitive). Searching only hides
+  entries; the selection is kept.
 - View models expose `can…` getters for every action; views only enable a
   button through them. While applying or loading, adapter actions are
   disabled.

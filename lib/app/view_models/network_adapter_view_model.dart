@@ -40,6 +40,16 @@ class NetworkAdapterViewModel {
     return defaultGateway == null ? null : 'Gateway $defaultGateway';
   }
 
+  /// Case-insensitive match on name, description and IPv4 address.
+  bool matchesSearch(String searchText) {
+    final normalizedSearch = searchText.trim().toLowerCase();
+    return [
+      adapter.name,
+      adapter.description,
+      ?adapter.ipAddress,
+    ].any((text) => text.toLowerCase().contains(normalizedSearch));
+  }
+
   String? get dnsServersText => adapter.dnsServers.isEmpty
       ? null
       : 'DNS ${adapter.dnsServers.join(', ')}';

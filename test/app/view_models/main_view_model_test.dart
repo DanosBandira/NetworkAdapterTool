@@ -227,6 +227,71 @@ void main() {
     });
   });
 
+  group('search', () {
+    final wifi = NetworkAdapter(
+      name: 'Wi-Fi',
+      description: 'Intel(R) Wi-Fi 6E',
+      status: NetworkAdapterStatus.connected,
+      addressingMode: AddressingMode.dhcp,
+      ipAddress: '192.168.2.6',
+    );
+
+    test('filters adapters on name, description and IP', () async {
+      final viewModel = await initializedViewModel(
+        _TwoAdapterReader(ethernet(), wifi),
+      );
+
+      viewModel.searchAdapters('wi-fi');
+      expect(viewModel.visibleAdapters.map((adapter) => adapter.name), [
+        'Wi-Fi',
+      ]);
+
+      viewModel.searchAdapters('ETHERNET');
+      expect(viewModel.visibleAdapters.map((adapter) => adapter.name), [
+        'Ethernet',
+      ]);
+
+      viewModel.searchAdapters('192.168.2');
+      expect(viewModel.visibleAdapters.map((adapter) => adapter.name), [
+        'Wi-Fi',
+      ]);
+
+      viewModel.searchAdapters('  ');
+      expect(viewModel.visibleAdapters, hasLength(2));
+    });
+
+    test('filters profiles on name and IP', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      viewModel.searchProfiles('off');
+      expect(viewModel.visibleProfiles.map((profile) => profile.name), [
+        'Office',
+      ]);
+
+      viewModel.searchProfiles('192.168.0');
+      expect(viewModel.visibleProfiles.map((profile) => profile.name), [
+        'Machine',
+      ]);
+    });
+
+    test('keeps the selection when it is filtered out', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      viewModel
+        ..selectAdapter('Ethernet')
+        ..selectProfile('Machine')
+        ..searchAdapters('nothing matches')
+        ..searchProfiles('nothing matches');
+
+      expect(viewModel.visibleAdapters, isEmpty);
+      expect(viewModel.selectedAdapterName, 'Ethernet');
+      expect(viewModel.canApplySelectedProfile, isTrue);
+    });
+  });
+
   group('profiles', () {
     test('adds a new profile and selects it', () async {
       final viewModel = await initializedViewModel(
@@ -310,4 +375,21 @@ void main() {
       },
     );
   });
+}
+
+/// Returns two adapters on every read, for search tests.
+class _TwoAdapterReader implements NetworkAdapterReader {
+  _TwoAdapterReader(this.first, this.second);
+
+  final NetworkAdapter first;
+  final NetworkAdapter second;
+
+  @override
+  Future<List<NetworkAdapter>> readAllAdapters() async => [first, second];
+
+  @override
+  Future<NetworkAdapter?> readAdapterByName(String adapterName) async => [
+    first,
+    second,
+  ].where((adapter) => adapter.name == adapterName).firstOrNull;
 }

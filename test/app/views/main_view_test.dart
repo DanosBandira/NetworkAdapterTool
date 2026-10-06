@@ -75,6 +75,33 @@ void main() {
     expect(adapterCardBorder().width, 2);
   });
 
+  testWidgets('colors profile cards yellow', (tester) async {
+    await showApp(tester);
+
+    final profileCard = tester.widget<Card>(
+      find.ancestor(of: find.text('Machine'), matching: find.byType(Card)),
+    );
+    expect(profileCard.color, const Color(0xFFFFF6D5));
+  });
+
+  testWidgets('filters profiles and explains an empty result', (tester) async {
+    await showApp(tester);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Search profiles by name or IP'),
+      'xyz',
+    );
+    await tester.pump();
+
+    expect(find.text('Machine'), findsNothing);
+    expect(find.text('No profiles match "xyz".'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pump();
+
+    expect(find.text('Machine'), findsOneWidget);
+  });
+
   testWidgets('shows adapters and profiles', (tester) async {
     await showApp(tester);
 
