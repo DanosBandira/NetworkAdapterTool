@@ -106,3 +106,14 @@ install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
+
+# Ship the Visual C++ runtime DLLs (msvcp140, vcruntime140, ...) next to the
+# executable, so the Release folder runs on a PC without the VC++
+# Redistributable installed. Debug builds use the debug runtime, which is not
+# redistributable and only exists where Visual Studio is installed.
+set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+include(InstallRequiredSystemLibraries)
+install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}
+  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  CONFIGURATIONS Profile;Release
+  COMPONENT Runtime)

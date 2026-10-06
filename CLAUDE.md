@@ -83,6 +83,7 @@ test/
 docs/architecture.html                         (layers + dependency graph)
 icon.svg                                       (app icon source)
 tool/svg_to_ico.py                             (icon.svg → app_icon.ico)
+tool/package_release.ps1                       (release build → dist\NetworkAdapterTool.zip)
 ```
 
 ## Responsibilities
@@ -236,6 +237,16 @@ prefix length to a dotted subnet mask. The reader sits behind
 - Because of `requireAdministrator`, `flutter run` must be started from an
   elevated terminal/IDE; otherwise launching the exe fails.
 - `flutter test` needs no elevation (core tests use fakes).
+- Distribution: `tool\package_release.ps1` builds release and zips the whole
+  `build\windows\x64\runner\Release` folder (exe, `flutter_windows.dll`, the
+  VC++ runtime DLLs and the `data` folder) into `dist\NetworkAdapterTool.zip`
+  (`dist/` is git-ignored). Users unpack it and create a shortcut to the exe;
+  the exe alone never starts, it loads the rest from its own folder.
+  `windows/CMakeLists.txt` installs the VC++ runtime DLLs app-locally for
+  Profile/Release, so the target PC needs no VC++ Redistributable (the UCRT
+  `api-ms-win-crt-*` DLLs ship with Windows 10/11). Never distribute the
+  Debug build: it needs the non-redistributable debug runtime
+  (`msvcp140d.dll`, `ucrtbased.dll`).
 - View models are tested with the fakes in `test/fakes/` and a real
   `NetworkProfileApplier`; widget tests in `test/app/views/` render the real
   views against those view models.
