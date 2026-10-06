@@ -33,11 +33,12 @@ void main() {
     String? subnetMask = '255.255.255.0',
     String? defaultGateway = '192.168.0.1',
     List<String> dnsServers = const ['8.8.8.8', '1.1.1.1'],
+    NetworkAdapterStatus status = NetworkAdapterStatus.connected,
   }) {
     return NetworkAdapter(
       name: adapterName,
       description: 'Intel(R) Ethernet',
-      status: NetworkAdapterStatus.connected,
+      status: status,
       addressingMode: addressingMode,
       ipAddress: ipAddress,
       subnetMask: subnetMask,
@@ -108,6 +109,7 @@ void main() {
     test('waits until the setting becomes active', () async {
       final reader = FakeNetworkAdapterReader([
         adapterSnapshot(addressingMode: AddressingMode.dhcp),
+        adapterSnapshot(addressingMode: AddressingMode.dhcp),
         adapterSnapshot(ipAddress: '169.254.1.1'),
         adapterSnapshot(),
       ]);
@@ -116,7 +118,8 @@ void main() {
           .applyProfileToAdapter(staticProfile, adapterName);
 
       expect(outcome, isA<ProfileApplied>());
-      expect(reader.readCount, 3);
+      // One read before applying, then three verification attempts.
+      expect(reader.readCount, 4);
     });
 
     test('treats a blank gateway in the profile as no gateway', () async {
@@ -139,6 +142,58 @@ void main() {
       );
 
       expect(outcome, isA<ProfileApplied>());
+    });
+  });
+
+  // Windows keeps DHCP enabled when a disconnected adapter is switched from
+  // DHCP to static (confirmed with netsh, Set-NetIPInterface and WMI).
+  group('disconnected adapter', () {
+    test('refuses a static profile while the adapter uses DHCP', () async {
+      final reader = FakeNetworkAdapterReader([
+        adapterSnapshot(
+          addressingMode: AddressingMode.dhcp,
+          status: NetworkAdapterStatus.disconnected,
+        ),
+      ]);
+
+      final outcome = await applierReading(reader)
+          .applyProfileToAdapter(staticProfile, adapterName);
+
+      expect(outcome, isA<ProfileNeedsConnectedAdapter>());
+      expect(configurator.appliedProfiles, isEmpty);
+      expect(reader.readCount, 1);
+    });
+
+    test(
+      'applies a static profile when the adapter is already static',
+      () async {
+        final disconnectedStaticAdapter = adapterSnapshot(
+          status: NetworkAdapterStatus.disconnected,
+        );
+
+        final outcome = await applierReading(
+          FakeNetworkAdapterReader([disconnectedStaticAdapter]),
+        ).applyProfileToAdapter(staticProfile, adapterName);
+
+        expect(outcome, isA<ProfileApplied>());
+        expect(configurator.appliedProfiles, hasLength(1));
+      },
+    );
+
+    test('applies a DHCP profile without checking first', () async {
+      final reader = FakeNetworkAdapterReader([
+        adapterSnapshot(
+          addressingMode: AddressingMode.dhcp,
+          status: NetworkAdapterStatus.disconnected,
+        ),
+      ]);
+
+      final outcome = await applierReading(reader)
+          .applyProfileToAdapter(dhcpProfile, adapterName);
+
+      expect(outcome, isA<ProfileApplied>());
+      // Only the verification read.
+      expect(reader.readCount, 1);
     });
   });
 
@@ -180,7 +235,8 @@ void main() {
 
       expect(outcome, isA<ProfileRejectedBySystem>());
       expect((outcome as ProfileRejectedBySystem).error, same(netshError));
-      expect(reader.readCount, 0);
+      // Only the read before applying; no verification reads.
+      expect(reader.readCount, 1);
     });
 
     test(
@@ -201,7 +257,7 @@ void main() {
         ]);
         expect(mismatches.first.expected, '192.168.0.1');
         expect(mismatches.first.actual, isNull);
-        expect(reader.readCount, 3);
+        expect(reader.readCount, 4);
       },
     );
 

@@ -8,7 +8,8 @@ import 'profiles/network_profile_validator.dart';
 
 /// Use case: apply a profile to an adapter and confirm it took effect.
 ///
-/// Steps: validate the profile, let the configurator apply it, then re-read
+/// Steps: validate the profile, check that Windows can apply it to the
+/// adapter in its current state, let the configurator apply it, then re-read
 /// the adapter and compare. The re-read is needed because netsh can report
 /// success before Windows activates a setting, and because netsh's
 /// "DHCP already enabled" exit code also hides real errors.
@@ -39,6 +40,13 @@ class NetworkProfileApplier {
       return ProfileInvalid(validationErrors);
     }
 
+    if (await _isDisconnectedDhcpAdapterGettingStaticAddress(
+      profile,
+      adapterName,
+    )) {
+      return const ProfileNeedsConnectedAdapter();
+    }
+
     try {
       await _configurator.applyProfileToAdapter(profile, adapterName);
     } on NetworkConfigurationException catch (error) {
@@ -46,6 +54,29 @@ class NetworkProfileApplier {
     }
 
     return _verifyProfileIsActive(profile, adapterName);
+  }
+
+  // Windows keeps DHCP enabled when a disconnected adapter is switched from
+  // DHCP to a static address: netsh, Set-NetIPInterface and WMI EnableStatic
+  // all report success but only store the address next to DHCP. Applying
+  // anyway would leave that mixed state, so it is refused up front.
+  // Static-to-static and switching to DHCP work while disconnected.
+  //
+  // Costs one extra adapter read, only for static profiles. When the read
+  // fails the profile is applied anyway and verification reports the result.
+  Future<bool> _isDisconnectedDhcpAdapterGettingStaticAddress(
+    NetworkProfile profile,
+    String adapterName,
+  ) async {
+    if (profile.addressingMode != AddressingMode.staticIp) return false;
+    try {
+      final adapter = await _reader.readAdapterByName(adapterName);
+      return adapter != null &&
+          adapter.addressingMode == AddressingMode.dhcp &&
+          adapter.status != NetworkAdapterStatus.connected;
+    } on NetworkAdapterReadException {
+      return false;
+    }
   }
 
   Future<ApplyProfileOutcome> _verifyProfileIsActive(
@@ -215,6 +246,12 @@ final class ProfileInvalid extends ApplyProfileOutcome {
   const ProfileInvalid(this.validationErrors);
 
   final List<NetworkProfileValidationError> validationErrors;
+}
+
+/// Nothing was applied: Windows only switches an adapter from DHCP to a
+/// static address while it is connected.
+final class ProfileNeedsConnectedAdapter extends ApplyProfileOutcome {
+  const ProfileNeedsConnectedAdapter();
 }
 
 /// Windows refused a setting; the adapter may be partly changed.

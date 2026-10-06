@@ -21,11 +21,12 @@ interfaces (use `abstract interface class`).
 - Flutter (stable) with Dart 3, Windows desktop target only
 - `provider` + `ChangeNotifier` view models (MVVM)
 - Manual constructor injection; composition root in `lib/main.dart`
-- `tray_manager` for the tray icon, `window_manager` for hide-to-tray
 - `dart:convert` for profile storage (JSON)
 - `flutter_test` for tests, `flutter_lints` for analysis
-- `windows/runner/runner.exe.manifest` with `requireAdministrator`
-  (changing IP settings needs elevation)
+- `requireAdministrator` via `/MANIFESTUAC` in `windows/runner/CMakeLists.txt`
+  (changing IP settings needs elevation). Not as a `trustInfo` block in
+  `runner.exe.manifest`: the linker adds its own UAC fragment and mt.exe
+  fails on the duplicate (LNK1327).
 
 ## Project structure
 
@@ -34,7 +35,7 @@ Single Flutter project in the repository root. `lib/core/` must never import
 
 ```
 pubspec.yaml
-windows/runner/runner.exe.manifest
+windows/runner/CMakeLists.txt                  (/MANIFESTUAC requireAdministrator)
 lib/
 ├── main.dart                                  (composition root)
 ├── core/
@@ -61,11 +62,13 @@ lib/
     │   ├── main_view_model.dart
     │   ├── network_adapter_view_model.dart
     │   └── network_profile_editor_view_model.dart
-    ├── views/
-    │   ├── main_view.dart
-    │   └── network_profile_editor_view.dart
-    └── tray/tray_menu_builder.dart
+    └── views/
+        ├── main_view.dart
+        └── network_profile_editor_view.dart
 test/
+├── core/ · app/                               (mirror lib/)
+└── fakes/                                     (fake reader/configurator/runner/repository)
+docs/architecture.html                         (layers + dependency graph)
 ```
 
 ## Responsibilities
@@ -112,7 +115,7 @@ netsh interface ipv4 set dnsservers name=<adapter> source=static address=none
 gateway, DNS or DHCP state), so the reader runs one PowerShell script:
 
 ```
-powershell.exe -NoProfile -NonInteractive -Command <script>
+powershell.exe -NoProfile -NonInteractive -EncodedCommand <base64 script>
 ```
 
 The script combines `Get-NetAdapter`, `Get-NetIPInterface` (Dhcp),
@@ -148,8 +151,8 @@ prefix length to a dotted subnet mask. The reader sits behind
 - netsh output is localized and in the OEM code page; rely on exit codes, not
   on parsing netsh text.
 - Force UTF-8 output in the PowerShell script
-  (`[Console]::OutputEncoding = [Text.Encoding]::UTF8`) so adapter names with
-  non-ASCII characters survive.
+  (`[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false`,
+  i.e. without BOM) so adapter names with non-ASCII characters survive.
 - After applying, `NetworkProfileApplier` re-reads the adapter and compares,
   because netsh can report success before the setting is active. It retries
   the read (default 3 attempts, 1 s apart) and returns a sealed
@@ -158,6 +161,14 @@ prefix length to a dotted subnet mask. The reader sits behind
   `ProfileNotVerified`) so the UI must handle every case.
 - A DHCP profile is verified on addressing mode only; right after switching
   the adapter may still hold an APIPA address.
+- Windows does not disable DHCP on a disconnected adapter: switching a
+  disconnected DHCP adapter to static stores the address next to
+  `EnableDHCP=1` (verified 2026-10-06 with netsh, `Set-NetIPInterface` and WMI
+  `EnableStatic`, all reporting success). The applier therefore reads the
+  adapter first for static profiles and returns
+  `ProfileNeedsConnectedAdapter` without applying anything. Static-to-static
+  and switching to DHCP work while disconnected. Do not write `EnableDHCP` to
+  the registry directly; that bypasses the DHCP client.
 - `docs/architecture.html` visualizes the layers; update it when components
   are added or a build step is completed.
 - Use `Platform.environment['APPDATA']` for the profile path instead of
@@ -181,6 +192,26 @@ prefix length to a dotted subnet mask. The reader sits behind
 - Because of `requireAdministrator`, `flutter run` must be started from an
   elevated terminal/IDE; otherwise launching the exe fails.
 - `flutter test` needs no elevation (core tests use fakes).
+- View models are tested with the fakes in `test/fakes/` and a real
+  `NetworkProfileApplier`; widget tests in `test/app/views/` render the real
+  views against those view models.
+
+## UI conventions
+
+- UI text is English, like the validator messages.
+- Adapter cards: light green background when connected, light red otherwise
+  (muted variants in dark mode); the selected card gets a primary-colored
+  border because the background already encodes the connection state.
+- View models expose `can…` getters for every action; views only enable a
+  button through them. While applying or loading, adapter actions are
+  disabled.
+- Profile editing stays disabled when `profiles.json` failed to load, so a
+  save can never overwrite profiles that could not be read.
+- After applying, the adapter returned by `ProfileApplied` replaces the list
+  entry instead of triggering a full (slow) re-read.
+- The editor shows two DNS fields like Windows; extra servers from
+  `profiles.json` are kept. Switching a profile to DHCP drops its address
+  fields.
 
 ## UI
 
@@ -188,10 +219,10 @@ prefix length to a dotted subnet mask. The reader sits behind
   left, profile list on the right, "Apply profile to selected adapter" button,
   and a "Switch to DHCP" shortcut.
 - Profile editor: create, edit, delete profiles with inline validation.
-- Tray icon: context menu per adapter with the profiles as items for
-  one-click switching; closing the window hides it to the tray.
 
 ## Build order
+
+All done:
 
 1. `flutter create --platforms=windows`, manifest, lints; core models and contracts
 2. `ProcessCommandRunner` + `NetshNetworkAdapterConfigurator` with tests
@@ -199,4 +230,31 @@ prefix length to a dotted subnet mask. The reader sits behind
 4. `JsonNetworkProfileRepository` + `NetworkProfileValidator` with tests
 5. `NetworkProfileApplier`
 6. Flutter app: main view, profile editor
-7. Tray menu
+
+## Future
+
+Not planned yet; pick up only when the user asks.
+
+### Tray menu
+
+- Tray icon with a context menu: one submenu per adapter (showing name,
+  connection state and DHCP/static) containing "Switch to DHCP" and every
+  profile; one click applies it. The active profile gets a check mark.
+  Below the adapters: "Open window", "Refresh adapters", "Exit".
+- After applying, show a Windows notification with the outcome text (the same
+  messages `MainViewModel` produces).
+- Closing the window hides it to the tray; "Exit" really quits.
+- Packages: `tray_manager` (icon + menu), `window_manager` (hide to tray).
+  Planned location: `lib/app/tray/tray_menu_builder.dart`.
+- Reuse `MainViewModel` for state and applying, so the apply/verify/error
+  logic exists once. Build the menu from the last known adapter list and
+  refresh in the background when the menu opens (a read takes 2–5 s).
+- Open question: which adapters to list. The user's machine has 10, most
+  virtual (Hyper-V, VPN, TAP, Bluetooth). Options: all, physical only
+  (`Get-NetAdapter -Physical`, preferred), or a user-selectable list.
+
+### Start with Windows
+
+- Because of `requireAdministrator`, a normal autostart shows a UAC prompt at
+  every login. Without the prompt it needs a scheduled task with "run with
+  highest privileges" at logon.

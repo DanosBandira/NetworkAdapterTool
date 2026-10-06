@@ -1,16 +1,64 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import 'app/view_models/main_view_model.dart';
+import 'app/views/main_view.dart';
+import 'core/adapters/netsh_network_adapter_configurator.dart';
+import 'core/adapters/powershell_network_adapter_reader.dart';
+import 'core/adapters/process_command_runner.dart';
+import 'core/network_profile_applier.dart';
+import 'core/profiles/json_network_profile_repository.dart';
+import 'core/profiles/network_profile_validator.dart';
+
+/// Composition root: the only place that picks concrete implementations.
 void main() {
-  runApp(const MainApp());
+  final mainViewModel = _composeMainViewModel();
+  runApp(NetworkProfileSwitcherApp(mainViewModel: mainViewModel));
+  // Not awaited: the window shows immediately with a loading indicator
+  // while adapters are read, which takes a few seconds.
+  unawaited(mainViewModel.initialize());
 }
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+MainViewModel _composeMainViewModel() {
+  const commandRunner = ProcessCommandRunner();
+  const reader = PowerShellNetworkAdapterReader(commandRunner);
+  return MainViewModel(
+    reader: reader,
+    repository: JsonNetworkProfileRepository.inRoamingAppData(),
+    applier: const NetworkProfileApplier(
+      validator: NetworkProfileValidator(),
+      configurator: NetshNetworkAdapterConfigurator(commandRunner),
+      reader: reader,
+    ),
+  );
+}
+
+class NetworkProfileSwitcherApp extends StatelessWidget {
+  const NetworkProfileSwitcherApp({super.key, required this.mainViewModel});
+
+  final MainViewModel mainViewModel;
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Scaffold(body: Center(child: Text('Hello World!'))),
+    return ChangeNotifierProvider.value(
+      value: mainViewModel,
+      child: MaterialApp(
+        title: 'Network Profile Switcher',
+        debugShowCheckedModeBanner: false,
+        theme: _buildTheme(Brightness.light),
+        darkTheme: _buildTheme(Brightness.dark),
+        home: const MainView(),
+      ),
+    );
+  }
+
+  ThemeData _buildTheme(Brightness brightness) {
+    return ThemeData(
+      colorSchemeSeed: Colors.teal,
+      brightness: brightness,
+      visualDensity: VisualDensity.compact,
     );
   }
 }
