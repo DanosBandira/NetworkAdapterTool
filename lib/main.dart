@@ -6,11 +6,13 @@ import 'package:provider/provider.dart';
 import 'app/view_models/main_view_model.dart';
 import 'app/views/main_view.dart';
 import 'core/adapters/netsh_network_adapter_configurator.dart';
+import 'core/adapters/ping_exe_host_pinger.dart';
 import 'core/adapters/powershell_network_adapter_reader.dart';
 import 'core/adapters/process_command_runner.dart';
 import 'core/network_profile_applier.dart';
 import 'core/profiles/json_network_profile_repository.dart';
 import 'core/profiles/network_profile_validator.dart';
+import 'core/reachability/ping_targets_checker.dart';
 
 /// Composition root: the only place that picks concrete implementations.
 void main() {
@@ -31,6 +33,9 @@ MainViewModel _composeMainViewModel() {
       validator: NetworkProfileValidator(),
       configurator: NetshNetworkAdapterConfigurator(commandRunner),
       reader: reader,
+    ),
+    pingTargetsChecker: const PingTargetsChecker(
+      PingExeHostPinger(commandRunner),
     ),
   );
 }

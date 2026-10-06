@@ -24,7 +24,11 @@ class JsonNetworkProfileRepository implements NetworkProfileRepository {
     );
   }
 
-  static const _currentFormatVersion = 1;
+  // Version history:
+  // 1: initial format.
+  // 2: profiles may contain "pingTargets". Version 1 files load unchanged;
+  //    the bump stops an older app from saving and dropping ping targets.
+  static const _currentFormatVersion = 2;
 
   final File _profilesFile;
 

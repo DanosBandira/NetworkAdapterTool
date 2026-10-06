@@ -292,8 +292,9 @@ class _ProfileTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final viewModel = context.read<MainViewModel>();
+    final viewModel = context.watch<MainViewModel>();
     final theme = Theme.of(context);
+    final pingStatuses = viewModel.pingStatusesFor(profile.name);
     return Card(
       elevation: 0,
       color: theme.brightness == Brightness.dark
@@ -307,36 +308,140 @@ class _ProfileTile extends StatelessWidget {
             ? BorderSide(color: theme.colorScheme.primary, width: 2)
             : BorderSide.none,
       ),
-      child: ListTile(
-        onTap: () => viewModel.selectProfile(profile.name),
-        title: Text(profile.name),
-        subtitle: Text(_describeProfile(profile)),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              tooltip: 'Edit',
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: canEdit
-                  ? () => _openProfileEditor(context, profileToEdit: profile)
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildHeader(context, viewModel),
+          if (pingStatuses != null) _PingResults(statuses: pingStatuses),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, MainViewModel viewModel) {
+    return ListTile(
+      onTap: () => viewModel.selectProfile(profile.name),
+      title: Text(profile.name),
+      subtitle: Text(_describeProfile(profile)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (profile.pingTargets.isNotEmpty)
+            OutlinedButton(
+              onPressed: viewModel.canPingProfile(profile)
+                  ? () => viewModel.pingTargetsOf(profile)
                   : null,
+              child: viewModel.isPinging(profile.name)
+                  ? const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox.square(
+                          dimension: 12,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 8),
+                        Text('Ping'),
+                      ],
+                    )
+                  : const Text('Ping'),
             ),
-            IconButton(
-              tooltip: 'Delete',
-              icon: const Icon(Icons.delete_outline),
-              onPressed: canEdit
-                  ? () => _confirmAndDeleteProfile(context, profile)
-                  : null,
-            ),
-          ],
-        ),
+          IconButton(
+            tooltip: 'Edit',
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: canEdit
+                ? () => _openProfileEditor(context, profileToEdit: profile)
+                : null,
+          ),
+          IconButton(
+            tooltip: 'Delete',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: canEdit
+                ? () => _confirmAndDeleteProfile(context, profile)
+                : null,
+          ),
+        ],
       ),
     );
   }
 
   String _describeProfile(NetworkProfile profile) {
-    if (profile.addressingMode == AddressingMode.dhcp) return 'DHCP';
-    return '${profile.ipAddress} / ${profile.subnetMask}';
+    final addressing = profile.addressingMode == AddressingMode.dhcp
+        ? 'DHCP'
+        : '${profile.ipAddress} / ${profile.subnetMask}';
+    final targetCount = profile.pingTargets.length;
+    return switch (targetCount) {
+      0 => addressing,
+      1 => '$addressing · 1 ping target',
+      _ => '$addressing · $targetCount ping targets',
+    };
+  }
+}
+
+/// Ping state per target under a profile card: a colored dot (or spinner),
+/// the target and its round-trip time or "No reply".
+class _PingResults extends StatelessWidget {
+  const _PingResults({required this.statuses});
+
+  static const _reachableColor = Color(0xFF2E7D32);
+
+  final List<PingTargetStatus> statuses;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Column(
+        children: [
+          for (final status in statuses)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  _buildStateIndicator(status.state, theme),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _describeTarget(status),
+                      style: theme.textTheme.bodySmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    status.resultText,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: _resultColor(status.state, theme),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStateIndicator(PingState state, ThemeData theme) {
+    if (state == PingState.pinging) {
+      return const SizedBox.square(
+        dimension: 10,
+        child: CircularProgressIndicator(strokeWidth: 1.5),
+      );
+    }
+    return Icon(Icons.circle, size: 10, color: _resultColor(state, theme));
+  }
+
+  Color _resultColor(PingState state, ThemeData theme) => switch (state) {
+    PingState.pinging => theme.colorScheme.outline,
+    PingState.reachable => _reachableColor,
+    PingState.unreachable => theme.colorScheme.error,
+  };
+
+  String _describeTarget(PingTargetStatus status) {
+    final target = status.target;
+    return target.name == null || target.name!.trim().isEmpty
+        ? target.ipAddress
+        : '${target.name} · ${target.ipAddress}';
   }
 }
 

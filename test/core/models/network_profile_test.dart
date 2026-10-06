@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:network_profile_switcher/core/models/addressing_mode.dart';
 import 'package:network_profile_switcher/core/models/network_profile.dart';
+import 'package:network_profile_switcher/core/models/ping_target.dart';
 
 void main() {
   test('static profile survives a JSON round trip', () {
@@ -21,6 +22,22 @@ void main() {
     expect(restored.subnetMask, original.subnetMask);
     expect(restored.defaultGateway, original.defaultGateway);
     expect(restored.dnsServers, original.dnsServers);
+  });
+
+  test('ping targets survive a JSON round trip', () {
+    const original = NetworkProfile(
+      name: 'Line 1',
+      addressingMode: AddressingMode.dhcp,
+      pingTargets: [
+        PingTarget(ipAddress: '10.100.10.1', name: 'PLC'),
+        PingTarget(ipAddress: '10.100.10.2'),
+      ],
+    );
+
+    final restored = NetworkProfile.fromJson(original.toJson());
+
+    expect(restored.pingTargets, original.pingTargets);
+    expect(restored.pingTargets[1].displayName, '10.100.10.2');
   });
 
   test('optional settings are omitted from JSON when not set', () {

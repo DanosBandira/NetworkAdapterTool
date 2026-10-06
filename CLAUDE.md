@@ -43,16 +43,21 @@ lib/
 │   │   ├── network_profile.dart
 │   │   ├── network_adapter.dart
 │   │   ├── ipv4_address.dart                  (parsing + subnet arithmetic)
+│   │   ├── ping_target.dart                   (IP + optional name)
 │   │   └── addressing_mode.dart               (dhcp | staticIp)
 │   ├── contracts/
 │   │   ├── network_adapter_reader.dart
 │   │   ├── network_adapter_configurator.dart
 │   │   ├── network_profile_repository.dart
+│   │   ├── host_pinger.dart
 │   │   └── command_runner.dart
 │   ├── adapters/
 │   │   ├── powershell_network_adapter_reader.dart
 │   │   ├── netsh_network_adapter_configurator.dart
+│   │   ├── ping_exe_host_pinger.dart
 │   │   └── process_command_runner.dart
+│   ├── reachability/
+│   │   └── ping_targets_checker.dart
 │   ├── profiles/
 │   │   ├── json_network_profile_repository.dart
 │   │   └── network_profile_validator.dart
@@ -81,7 +86,9 @@ docs/architecture.html                         (layers + dependency graph)
 | `JsonNetworkProfileRepository` | Load/save profiles in `%APPDATA%\NetworkProfileSwitcher\profiles.json` | – |
 | `NetworkProfileValidator` | Validate IP, subnet mask, gateway in same subnet, DNS addresses | – |
 | `NetworkProfileApplier` | Use case: validate, apply, verify the result | validator, configurator, reader |
-| View models | UI state and commands only, no network logic | applier, repository, reader |
+| `PingExeHostPinger` | One echo request via `ping.exe`; reply = exit code 0 and `TTL=` in the output | `CommandRunner` |
+| `PingTargetsChecker` | Ping all targets concurrently, retry each until it answers or 10 s pass, emit results as they resolve | `HostPinger` |
+| View models | UI state and commands only, no network logic | applier, repository, reader, ping checker |
 
 ## Model
 
@@ -91,6 +98,8 @@ docs/architecture.html                         (layers + dependency graph)
 - `ipAddress`, `subnetMask` (required when staticIp)
 - `defaultGateway` (optional)
 - `dnsServers` (optional list)
+- `pingTargets` (optional list of `PingTarget`: `ipAddress` + optional
+  `name`), for both DHCP and static profiles
 
 A profile is independent of an adapter: the user picks the target adapter when
 applying it.
@@ -173,7 +182,15 @@ prefix length to a dotted subnet mask. The reader sits behind
   are added or a build step is completed.
 - Use `Platform.environment['APPDATA']` for the profile path instead of
   `path_provider`, which would add a company/app subfolder.
-- `profiles.json` is `{"formatVersion": 1, "profiles": [...]}`, written to a
+- Ping targets: pinged automatically after a successful apply (`ProfileApplied`)
+  and on demand with the ping button on a profile card. Each target is retried
+  for up to 10 s (1 s timeout per attempt, 0.5 s pause after a failure),
+  because link, ARP and devices need a few seconds after switching. Results
+  show under the profile card and are dropped when the profile is edited or
+  deleted. `ping.exe` exits 0 on "Destination host unreachable", so only
+  output containing `TTL=` counts as a reply.
+- `profiles.json` is `{"formatVersion": 2, "profiles": [...]}` (version 2
+  added `pingTargets`; version 1 files still load), written to a
   `.tmp` file and renamed over the original. A file that cannot be parsed or
   has a newer format version raises `NetworkProfileStorageException`; never
   treat it as "no profiles", or the next save would wipe the user's data.

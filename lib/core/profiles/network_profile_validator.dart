@@ -1,6 +1,7 @@
 import '../models/addressing_mode.dart';
 import '../models/ipv4_address.dart';
 import '../models/network_profile.dart';
+import '../models/ping_target.dart';
 
 /// The profile input a validation error belongs to, so the editor can show
 /// the message next to the right field.
@@ -10,6 +11,7 @@ enum NetworkProfileField {
   subnetMask,
   defaultGateway,
   dnsServers,
+  pingTargets,
 }
 
 class NetworkProfileValidationError {
@@ -24,10 +26,10 @@ class NetworkProfileValidationError {
 
 /// Checks that a profile is complete and consistent before it is saved or
 /// applied: valid IPv4 addresses, a contiguous subnet mask, a gateway inside
-/// the subnet and valid DNS servers.
+/// the subnet, valid DNS servers and valid ping targets.
 ///
-/// DHCP profiles only need a name; their address fields are ignored because
-/// the configurator never uses them.
+/// DHCP profiles only need a name and valid ping targets; their address
+/// fields are ignored because the configurator never uses them.
 class NetworkProfileValidator {
   const NetworkProfileValidator();
 
@@ -47,6 +49,7 @@ class NetworkProfileValidator {
       ..._validateName(profile.name, otherProfileNames),
       if (profile.addressingMode == AddressingMode.staticIp)
         ..._validateStaticSettings(profile),
+      ..._validatePingTargets(profile.pingTargets),
     ];
   }
 
@@ -198,6 +201,31 @@ class NetworkProfileValidator {
         yield NetworkProfileValidationError(
           NetworkProfileField.dnsServers,
           'DNS server "$text" is listed more than once.',
+        );
+      }
+    }
+  }
+
+  Iterable<NetworkProfileValidationError> _validatePingTargets(
+    List<PingTarget> pingTargets,
+  ) sync* {
+    final seenAddresses = <Ipv4Address>{};
+    for (final pingTarget in pingTargets) {
+      final address = _tryParse(pingTarget.ipAddress);
+      if (_isBlank(pingTarget.ipAddress)) {
+        yield NetworkProfileValidationError(
+          NetworkProfileField.pingTargets,
+          'Ping target "${pingTarget.displayName}" needs an IP address.',
+        );
+      } else if (!_isHostAddress(address)) {
+        yield NetworkProfileValidationError(
+          NetworkProfileField.pingTargets,
+          'Ping target "${pingTarget.ipAddress}" is not a valid IPv4 address.',
+        );
+      } else if (!seenAddresses.add(address!)) {
+        yield NetworkProfileValidationError(
+          NetworkProfileField.pingTargets,
+          'Ping target "${pingTarget.ipAddress}" is listed more than once.',
         );
       }
     }

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:network_profile_switcher/core/contracts/network_profile_repository.dart';
 import 'package:network_profile_switcher/core/models/addressing_mode.dart';
 import 'package:network_profile_switcher/core/models/network_profile.dart';
+import 'package:network_profile_switcher/core/models/ping_target.dart';
 import 'package:network_profile_switcher/core/profiles/json_network_profile_repository.dart';
 
 void main() {
@@ -76,13 +77,43 @@ void main() {
     await repository.saveAllProfiles([officeProfile]);
 
     final fileContent = await profilesFile.readAsString();
-    expect(fileContent, contains('\n  "formatVersion": 1'));
+    expect(fileContent, contains('\n  "formatVersion": 2'));
     expect(jsonDecode(fileContent), {
-      'formatVersion': 1,
+      'formatVersion': 2,
       'profiles': [
         {'name': 'Office', 'addressingMode': 'dhcp'},
       ],
     });
+  });
+
+  test('stores ping targets with their optional names', () async {
+    const profileWithPingTargets = NetworkProfile(
+      name: 'Machine',
+      addressingMode: AddressingMode.staticIp,
+      ipAddress: '10.100.10.4',
+      subnetMask: '255.255.255.0',
+      pingTargets: [
+        PingTarget(ipAddress: '10.100.10.1', name: 'PLC'),
+        PingTarget(ipAddress: '10.100.10.2'),
+      ],
+    );
+
+    await repository.saveAllProfiles([profileWithPingTargets]);
+    final loadedProfile = (await repository.loadAllProfiles()).single;
+
+    expect(loadedProfile.pingTargets, profileWithPingTargets.pingTargets);
+  });
+
+  test('loads a format version 1 file without ping targets', () async {
+    await profilesFile.parent.create(recursive: true);
+    await profilesFile.writeAsString(
+      '{"formatVersion":1,"profiles":[{"name":"Office","addressingMode":"dhcp"}]}',
+    );
+
+    final loadedProfile = (await repository.loadAllProfiles()).single;
+
+    expect(loadedProfile.name, 'Office');
+    expect(loadedProfile.pingTargets, isEmpty);
   });
 
   group('refuses to load instead of returning an empty list', () {
@@ -111,7 +142,7 @@ void main() {
     });
 
     test('when the file was written by a newer app version', () async {
-      await expectLoadingFails('{"formatVersion":2,"profiles":[]}');
+      await expectLoadingFails('{"formatVersion":3,"profiles":[]}');
     });
   });
 }

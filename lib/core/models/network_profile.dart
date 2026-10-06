@@ -1,4 +1,5 @@
 import 'addressing_mode.dart';
+import 'ping_target.dart';
 
 /// A named set of IPv4 settings that can be applied to any network adapter.
 ///
@@ -13,6 +14,7 @@ class NetworkProfile {
     this.subnetMask,
     this.defaultGateway,
     this.dnsServers = const [],
+    this.pingTargets = const [],
   });
 
   factory NetworkProfile.fromJson(Map<String, Object?> json) {
@@ -27,6 +29,11 @@ class NetworkProfile {
       dnsServers: List<String>.from(
         json['dnsServers'] as List<Object?>? ?? const <Object?>[],
       ),
+      pingTargets: [
+        for (final pingTargetEntry
+            in json['pingTargets'] as List<Object?>? ?? const <Object?>[])
+          PingTarget.fromJson(pingTargetEntry as Map<String, Object?>),
+      ],
     );
   }
 
@@ -44,6 +51,10 @@ class NetworkProfile {
   /// In priority order: the first entry becomes the primary DNS server.
   final List<String> dnsServers;
 
+  /// Addresses pinged after applying the profile; used for both DHCP and
+  /// static profiles.
+  final List<PingTarget> pingTargets;
+
   Map<String, Object?> toJson() {
     return {
       'name': name,
@@ -52,6 +63,8 @@ class NetworkProfile {
       if (subnetMask != null) 'subnetMask': subnetMask,
       if (defaultGateway != null) 'defaultGateway': defaultGateway,
       if (dnsServers.isNotEmpty) 'dnsServers': dnsServers,
+      if (pingTargets.isNotEmpty)
+        'pingTargets': [for (final target in pingTargets) target.toJson()],
     };
   }
 }

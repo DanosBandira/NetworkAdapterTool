@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:network_profile_switcher/app/view_models/network_profile_editor_view_model.dart';
 import 'package:network_profile_switcher/core/models/addressing_mode.dart';
 import 'package:network_profile_switcher/core/models/network_profile.dart';
+import 'package:network_profile_switcher/core/models/ping_target.dart';
 import 'package:network_profile_switcher/core/profiles/network_profile_validator.dart';
 
 void main() {
@@ -81,6 +82,64 @@ void main() {
     expect(savedProfile.addressingMode, AddressingMode.dhcp);
     expect(savedProfile.ipAddress, isNull);
     expect(savedProfile.dnsServers, isEmpty);
+  });
+
+  group('ping targets', () {
+    NetworkProfileEditorViewModel validDhcpEditor() {
+      return newProfileEditor()
+        ..updateName('Line 1')
+        ..updateAddressingMode(AddressingMode.dhcp);
+    }
+
+    test('adds, edits and removes ping target rows', () {
+      final editor = validDhcpEditor()
+        ..addPingTarget()
+        ..addPingTarget();
+      final [plcRow, hmiRow] = editor.pingTargetDrafts;
+      editor
+        ..updatePingTargetName(plcRow.id, 'PLC')
+        ..updatePingTargetIpAddress(plcRow.id, ' 10.100.10.1 ')
+        ..updatePingTargetIpAddress(hmiRow.id, '10.100.10.2')
+        ..removePingTarget(hmiRow.id);
+
+      final savedProfile = editor.trySave()!;
+
+      expect(savedProfile.pingTargets, [
+        const PingTarget(ipAddress: '10.100.10.1', name: 'PLC'),
+      ]);
+    });
+
+    test('skips rows that were added but left empty', () {
+      final editor = validDhcpEditor()..addPingTarget();
+
+      expect(editor.trySave()!.pingTargets, isEmpty);
+    });
+
+    test('shows an error for an invalid ping target address', () {
+      final editor = validDhcpEditor()..addPingTarget();
+      editor.updatePingTargetIpAddress(
+        editor.pingTargetDrafts.single.id,
+        '10.100',
+      );
+
+      expect(editor.errorFor(NetworkProfileField.pingTargets), isNotNull);
+      expect(editor.trySave(), isNull);
+    });
+
+    test('loads the ping targets of an existing profile', () {
+      final editor = NetworkProfileEditorViewModel(
+        originalProfile: const NetworkProfile(
+          name: 'Line 1',
+          addressingMode: AddressingMode.dhcp,
+          pingTargets: [PingTarget(ipAddress: '10.100.10.1', name: 'PLC')],
+        ),
+        otherProfileNames: const [],
+      );
+
+      final draft = editor.pingTargetDrafts.single;
+      expect(draft.name, 'PLC');
+      expect(draft.ipAddress, '10.100.10.1');
+    });
   });
 
   test('keeps DNS servers beyond the two form fields', () {

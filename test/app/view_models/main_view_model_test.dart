@@ -7,11 +7,14 @@ import 'package:network_profile_switcher/core/models/addressing_mode.dart';
 import 'package:network_profile_switcher/core/models/network_adapter.dart';
 import 'package:network_profile_switcher/core/models/network_profile.dart';
 import 'package:network_profile_switcher/core/network_profile_applier.dart';
+import 'package:network_profile_switcher/core/models/ping_target.dart';
 import 'package:network_profile_switcher/core/profiles/network_profile_validator.dart';
+import 'package:network_profile_switcher/core/reachability/ping_targets_checker.dart';
 
 import '../../fakes/fake_network_adapter_reader.dart';
 import '../../fakes/in_memory_network_profile_repository.dart';
 import '../../fakes/recording_network_adapter_configurator.dart';
+import '../../fakes/scripted_host_pinger.dart';
 
 void main() {
   const machineProfile = NetworkProfile(
@@ -42,12 +45,14 @@ void main() {
 
   late RecordingNetworkAdapterConfigurator configurator;
   late InMemoryNetworkProfileRepository repository;
+  late ScriptedHostPinger pinger;
 
   setUp(() {
     configurator = RecordingNetworkAdapterConfigurator();
     repository = InMemoryNetworkProfileRepository(
       storedProfiles: [machineProfile, officeProfile],
     );
+    pinger = ScriptedHostPinger();
   });
 
   MainViewModel createViewModel(NetworkAdapterReader reader) {
@@ -59,6 +64,11 @@ void main() {
         configurator: configurator,
         reader: reader,
         verificationAttempts: 1,
+      ),
+      pingTargetsChecker: PingTargetsChecker(
+        pinger,
+        tryFor: const Duration(milliseconds: 50),
+        pauseAfterFailedAttempt: const Duration(milliseconds: 5),
       ),
     );
   }
@@ -224,6 +234,109 @@ void main() {
 
       expect(viewModel.statusMessage?.kind, StatusKind.error);
       expect(viewModel.statusMessage?.text, contains('addressingMode'));
+    });
+  });
+
+  group('ping targets', () {
+    const plc = PingTarget(ipAddress: '10.100.10.1', name: 'PLC');
+    const hmi = PingTarget(ipAddress: '10.100.10.2', name: 'HMI');
+    const lineProfile = NetworkProfile(
+      name: 'Line 1',
+      addressingMode: AddressingMode.dhcp,
+      pingTargets: [plc, hmi],
+    );
+
+    setUp(() {
+      repository = InMemoryNetworkProfileRepository(
+        storedProfiles: [lineProfile, officeProfile],
+      );
+      pinger = ScriptedHostPinger({
+        plc.ipAddress: [const Duration(milliseconds: 3)],
+      });
+    });
+
+    PingState stateOf(MainViewModel viewModel, PingTarget target) => viewModel
+        .pingStatusesFor(lineProfile.name)!
+        .singleWhere((status) => status.target == target)
+        .state;
+
+    test('pings automatically after applying the profile', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      viewModel
+        ..selectAdapter('Ethernet')
+        ..selectProfile(lineProfile.name);
+
+      await viewModel.applySelectedProfileToSelectedAdapter();
+
+      expect(stateOf(viewModel, plc), PingState.reachable);
+      expect(stateOf(viewModel, hmi), PingState.unreachable);
+      expect(viewModel.isPinging(lineProfile.name), isFalse);
+    });
+
+    test('does not ping when applying failed', () async {
+      configurator = RecordingNetworkAdapterConfigurator(
+        errorToThrow: const NetworkConfigurationException(
+          failedCommand: 'netsh.exe',
+          exitCode: 1,
+          output: 'failed',
+        ),
+      );
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      viewModel
+        ..selectAdapter('Ethernet')
+        ..selectProfile(lineProfile.name);
+
+      await viewModel.applySelectedProfileToSelectedAdapter();
+
+      expect(viewModel.pingStatusesFor(lineProfile.name), isNull);
+      expect(pinger.attemptsPerAddress, isEmpty);
+    });
+
+    test('pings on demand and shows progress while pinging', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      final pinging = viewModel.pingTargetsOf(lineProfile);
+
+      expect(viewModel.isPinging(lineProfile.name), isTrue);
+      expect(viewModel.canPingProfile(lineProfile), isFalse);
+      expect(stateOf(viewModel, hmi), PingState.pinging);
+
+      await pinging;
+
+      expect(stateOf(viewModel, plc), PingState.reachable);
+      expect(
+        viewModel
+            .pingStatusesFor(lineProfile.name)!
+            .firstWhere((status) => status.target == plc)
+            .resultText,
+        '3 ms',
+      );
+      expect(viewModel.canPingProfile(lineProfile), isTrue);
+    });
+
+    test('cannot ping a profile without targets', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      expect(viewModel.canPingProfile(officeProfile), isFalse);
+    });
+
+    test('forgets results when the profile is deleted', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      await viewModel.pingTargetsOf(lineProfile);
+
+      await viewModel.deleteProfile(lineProfile);
+
+      expect(viewModel.pingStatusesFor(lineProfile.name), isNull);
     });
   });
 

@@ -6,11 +6,13 @@ import 'package:network_profile_switcher/core/models/network_adapter.dart';
 import 'package:network_profile_switcher/core/models/network_profile.dart';
 import 'package:network_profile_switcher/core/network_profile_applier.dart';
 import 'package:network_profile_switcher/core/profiles/network_profile_validator.dart';
+import 'package:network_profile_switcher/core/reachability/ping_targets_checker.dart';
 import 'package:network_profile_switcher/main.dart';
 
 import '../../fakes/fake_network_adapter_reader.dart';
 import '../../fakes/in_memory_network_profile_repository.dart';
 import '../../fakes/recording_network_adapter_configurator.dart';
+import '../../fakes/scripted_host_pinger.dart';
 
 void main() {
   late MainViewModel viewModel;
@@ -43,6 +45,7 @@ void main() {
         configurator: RecordingNetworkAdapterConfigurator(),
         reader: reader,
       ),
+      pingTargetsChecker: PingTargetsChecker(ScriptedHostPinger()),
     );
     await viewModel.initialize();
   });

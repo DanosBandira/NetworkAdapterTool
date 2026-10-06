@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:network_profile_switcher/core/models/addressing_mode.dart';
 import 'package:network_profile_switcher/core/models/network_profile.dart';
+import 'package:network_profile_switcher/core/models/ping_target.dart';
 import 'package:network_profile_switcher/core/profiles/network_profile_validator.dart';
 
 void main() {
@@ -216,6 +217,54 @@ void main() {
       expect(
         fieldsWithErrors(staticProfile(dnsServers: ['8.8.8.8', '8.8.8.8'])),
         [NetworkProfileField.dnsServers],
+      );
+    });
+  });
+
+  group('ping targets', () {
+    NetworkProfile dhcpProfileWithTargets(List<PingTarget> pingTargets) {
+      return NetworkProfile(
+        name: 'Line 1',
+        addressingMode: AddressingMode.dhcp,
+        pingTargets: pingTargets,
+      );
+    }
+
+    test('accepts valid targets, also on a DHCP profile', () {
+      final profile = dhcpProfileWithTargets(const [
+        PingTarget(ipAddress: '10.100.10.1', name: 'PLC'),
+        PingTarget(ipAddress: '10.100.10.2'),
+      ]);
+
+      expect(validator.validate(profile), isEmpty);
+    });
+
+    test('rejects an invalid address and names it in the message', () {
+      final errors = validator.validate(
+        dhcpProfileWithTargets(const [PingTarget(ipAddress: '10.100.10')]),
+      );
+
+      expect(errors.single.field, NetworkProfileField.pingTargets);
+      expect(errors.single.message, contains('"10.100.10"'));
+    });
+
+    test('rejects a target with only a name', () {
+      final errors = validator.validate(
+        dhcpProfileWithTargets(const [PingTarget(ipAddress: '', name: 'PLC')]),
+      );
+
+      expect(errors.single.message, contains('"PLC" needs an IP address'));
+    });
+
+    test('rejects the same address twice', () {
+      expect(
+        fieldsWithErrors(
+          dhcpProfileWithTargets(const [
+            PingTarget(ipAddress: '10.100.10.1', name: 'PLC'),
+            PingTarget(ipAddress: '10.100.10.1', name: 'HMI'),
+          ]),
+        ),
+        [NetworkProfileField.pingTargets],
       );
     });
   });

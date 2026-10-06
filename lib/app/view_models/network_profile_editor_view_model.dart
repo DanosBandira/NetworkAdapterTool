@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/models/addressing_mode.dart';
 import '../../core/models/network_profile.dart';
+import '../../core/models/ping_target.dart';
 import '../../core/profiles/network_profile_validator.dart';
 
 /// State of the profile editor dialog: the text of each field and the inline
@@ -22,7 +23,17 @@ class NetworkProfileEditorViewModel extends ChangeNotifier {
        _defaultGateway = originalProfile?.defaultGateway ?? '',
        _preferredDnsServer = _dnsServerAt(originalProfile, 0),
        _alternateDnsServer = _dnsServerAt(originalProfile, 1),
-       _furtherDnsServers = originalProfile?.dnsServers.skip(2).toList() ?? [];
+       _furtherDnsServers = originalProfile?.dnsServers.skip(2).toList() ?? [] {
+    for (final pingTarget in originalProfile?.pingTargets ?? <PingTarget>[]) {
+      _pingTargetDrafts.add(
+        PingTargetDraft._(
+          _nextPingTargetDraftId++,
+          name: pingTarget.name ?? '',
+          ipAddress: pingTarget.ipAddress,
+        ),
+      );
+    }
+  }
 
   /// `null` when creating a new profile.
   final NetworkProfile? originalProfile;
@@ -42,8 +53,14 @@ class NetworkProfileEditorViewModel extends ChangeNotifier {
   // servers (e.g. edited by hand in profiles.json) keeps the rest unchanged.
   final List<String> _furtherDnsServers;
 
+  final List<PingTargetDraft> _pingTargetDrafts = [];
+  int _nextPingTargetDraftId = 0;
+
   final Set<NetworkProfileField> _editedFields = {};
   bool _saveWasAttempted = false;
+
+  List<PingTargetDraft> get pingTargetDrafts =>
+      List.unmodifiable(_pingTargetDrafts);
 
   bool get isNewProfile => originalProfile == null;
   String get name => _name;
@@ -90,6 +107,26 @@ class NetworkProfileEditorViewModel extends ChangeNotifier {
     _markEdited(NetworkProfileField.dnsServers);
   }
 
+  void addPingTarget() {
+    _pingTargetDrafts.add(PingTargetDraft._(_nextPingTargetDraftId++));
+    notifyListeners();
+  }
+
+  void updatePingTargetName(int draftId, String name) {
+    _draftWithId(draftId).name = name;
+    _markEdited(NetworkProfileField.pingTargets);
+  }
+
+  void updatePingTargetIpAddress(int draftId, String ipAddress) {
+    _draftWithId(draftId).ipAddress = ipAddress;
+    _markEdited(NetworkProfileField.pingTargets);
+  }
+
+  void removePingTarget(int draftId) {
+    _pingTargetDrafts.removeWhere((draft) => draft.id == draftId);
+    notifyListeners();
+  }
+
   /// All messages for [field] joined, or `null` when there is nothing to
   /// show (yet).
   String? errorFor(NetworkProfileField field) {
@@ -122,13 +159,18 @@ class NetworkProfileEditorViewModel extends ChangeNotifier {
   List<NetworkProfileValidationError> _validate(NetworkProfile profile) =>
       _validator.validate(profile, otherProfileNames: _otherProfileNames);
 
+  PingTargetDraft _draftWithId(int draftId) =>
+      _pingTargetDrafts.firstWhere((draft) => draft.id == draftId);
+
   // A DHCP profile drops the address fields, so switching a profile to DHCP
-  // does not keep stale static settings in profiles.json.
+  // does not keep stale static settings in profiles.json. Ping targets are
+  // kept for both modes.
   NetworkProfile _buildProfile() {
     if (!usesStaticAddress) {
       return NetworkProfile(
         name: _name.trim(),
         addressingMode: AddressingMode.dhcp,
+        pingTargets: _buildPingTargets(),
       );
     }
     return NetworkProfile(
@@ -145,8 +187,20 @@ class NetworkProfileEditorViewModel extends ChangeNotifier {
         ])
           ?_trimmedOrNull(dnsServer),
       ],
+      pingTargets: _buildPingTargets(),
     );
   }
+
+  // Completely empty rows are skipped, so an added but unused row does not
+  // block saving. A row with only a name still fails validation.
+  List<PingTarget> _buildPingTargets() => [
+    for (final draft in _pingTargetDrafts)
+      if (!draft.isEmpty)
+        PingTarget(
+          ipAddress: draft.ipAddress.trim(),
+          name: _trimmedOrNull(draft.name),
+        ),
+  ];
 
   static String _dnsServerAt(NetworkProfile? profile, int index) {
     final dnsServers = profile?.dnsServers ?? const <String>[];
@@ -157,4 +211,18 @@ class NetworkProfileEditorViewModel extends ChangeNotifier {
     final trimmed = text.trim();
     return trimmed.isEmpty ? null : trimmed;
   }
+}
+
+/// One editable row in the editor's ping target list.
+///
+/// The [id] stays stable while rows are added and removed, so the view can
+/// keep each row's text fields attached to the right draft.
+class PingTargetDraft {
+  PingTargetDraft._(this.id, {this.name = '', this.ipAddress = ''});
+
+  final int id;
+  String name;
+  String ipAddress;
+
+  bool get isEmpty => name.trim().isEmpty && ipAddress.trim().isEmpty;
 }

@@ -119,7 +119,8 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
   <div class="band-header"><span class="band-title">Use case</span><span class="band-path">lib/core/</span></div>
   <div class="grid">
     <div class="card"><div class="name">NetworkProfileApplier</div><div class="role">Valideren, toepassen, opnieuw uitlezen en vergelijken</div></div>
-    <div class="card"><div class="name">ApplyProfileOutcome</div><div class="role">Applied · Invalid · RejectedBySystem · NotActive · NotVerified</div></div>
+    <div class="card"><div class="name">ApplyProfileOutcome</div><div class="role">Applied · Invalid · NeedsConnectedAdapter · RejectedBySystem · NotActive · NotVerified</div></div>
+    <div class="card"><div class="name">PingTargetsChecker</div><div class="role">Pingt alle doelen tot antwoord of 10 s</div></div>
   </div>
 </section>
 <div class="arrow">↓ hangt af van</div>
@@ -131,6 +132,7 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
     <div class="card"><div class="name">NetworkAdapterConfigurator</div><div class="role">Profiel toepassen</div></div>
     <div class="card"><div class="name">NetworkProfileRepository</div><div class="role">Profielen laden en opslaan</div></div>
     <div class="card"><div class="name">CommandRunner</div><div class="role">Proces starten</div></div>
+    <div class="card"><div class="name">HostPinger</div><div class="role">Eén ping sturen</div></div>
   </div>
 </section>
 <div class="arrow">↓ geïmplementeerd door</div>
@@ -142,6 +144,7 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
     <div class="card"><div class="name">NetshNetwork&shy;AdapterConfigurator</div><div class="role">netsh-commando's, via CommandRunner</div></div>
     <div class="card"><div class="name">JsonNetwork&shy;ProfileRepository</div><div class="role">Versie-JSON, atomair schrijven</div></div>
     <div class="card"><div class="name">ProcessCommandRunner</div><div class="role">Process.run met argumentlijst</div></div>
+    <div class="card"><div class="name">PingExeHostPinger</div><div class="role">ping.exe, antwoord = TTL= in uitvoer</div></div>
     <div class="card"><div class="name">NetworkProfileValidator</div><div class="role">Fouten per veld, geen contract</div></div>
   </div>
 </section>
@@ -154,6 +157,7 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
     <div class="card"><div class="name">NetworkAdapter</div><div class="role">Momentopname van adapter</div></div>
     <div class="card"><div class="name">AddressingMode</div><div class="role">dhcp · staticIp</div></div>
     <div class="card"><div class="name">Ipv4Address</div><div class="role">Parsen en subnet-rekenwerk</div></div>
+    <div class="card"><div class="name">PingTarget</div><div class="role">IP + optionele naam</div></div>
   </div>
 </section>
 <div class="arrow">↓ praat met</div>
@@ -163,12 +167,13 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
   <div class="grid">
     <div class="card"><div class="name">powershell.exe</div><div class="role">Get-NetAdapter en verwante cmdlets</div></div>
     <div class="card"><div class="name">netsh.exe</div><div class="role">interface ipv4 set/add</div></div>
+    <div class="card"><div class="name">ping.exe</div><div class="role">-4 -n 1 -w &lt;ms&gt;</div></div>
     <div class="card"><div class="name">profiles.json</div><div class="role">%APPDATA%\NetworkProfileSwitcher</div></div>
   </div>
 </section>
 
 <h2>Afhankelijkheden</h2>
-<p class="subtitle">Wie gebruikt wie, en welke implementatie hoort bij welk contract. De modellen worden door alle onderdelen gebruikt en zijn weggelaten.</p>
+<p class="subtitle">Wie gebruikt wie, en welke implementatie hoort bij welk contract. De modellen worden door alle onderdelen gebruikt en zijn weggelaten. De ping-keten staat er nog niet in: View models → PingTargetsChecker → HostPinger ⇠ PingExeHostPinger → CommandRunner → ping.exe.</p>
 <svg class="graph" viewBox="0 0 680 740" role="img">
 <title>Afhankelijkheden tussen de onderdelen</title>
 <desc>Tray en view models gebruiken de applier en de contracten; de applier gebruikt validator, configurator en reader; implementaties implementeren de contracten en gebruiken CommandRunner, die netsh.exe en powershell.exe start.</desc>

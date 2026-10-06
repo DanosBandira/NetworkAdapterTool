@@ -4,11 +4,13 @@ import '../../core/contracts/network_adapter_reader.dart';
 import '../../core/contracts/network_profile_repository.dart';
 import '../../core/models/addressing_mode.dart';
 import '../../core/models/network_profile.dart';
+import '../../core/models/ping_target.dart';
 import '../../core/network_profile_applier.dart';
+import '../../core/reachability/ping_targets_checker.dart';
 import 'network_adapter_view_model.dart';
 
-/// State and commands of the main window: the adapter list, the profile list
-/// and applying a profile to an adapter.
+/// State and commands of the main window: the adapter list, the profile list,
+/// applying a profile to an adapter and pinging a profile's targets.
 ///
 /// Holds no network logic itself; everything goes through the injected core
 /// components, so it can be tested with fakes.
@@ -17,6 +19,7 @@ class MainViewModel extends ChangeNotifier {
     required this._reader,
     required this._repository,
     required this._applier,
+    required this._pingTargetsChecker,
   });
 
   // Applied by the "Switch to DHCP" shortcut; never stored.
@@ -28,6 +31,13 @@ class MainViewModel extends ChangeNotifier {
   final NetworkAdapterReader _reader;
   final NetworkProfileRepository _repository;
   final NetworkProfileApplier _applier;
+  final PingTargetsChecker _pingTargetsChecker;
+
+  // Ping results stay visible under their profile until the next ping, an
+  // edit or a delete of that profile.
+  final Map<String, List<PingTargetStatus>> _pingStatusesByProfileName = {};
+  final Set<String> _profileNamesBeingPinged = {};
+  bool _isDisposed = false;
 
   List<NetworkAdapterViewModel> _adapters = [];
   List<NetworkProfile> _profiles = [];
@@ -68,6 +78,18 @@ class MainViewModel extends ChangeNotifier {
   // Profile editing is blocked until loading succeeded: saving over a file
   // that failed to load would replace the user's profiles.
   bool get canEditProfiles => _profilesAreLoaded;
+
+  /// `null` when the profile has not been pinged yet.
+  List<PingTargetStatus>? pingStatusesFor(String profileName) {
+    final statuses = _pingStatusesByProfileName[profileName];
+    return statuses == null ? null : List.unmodifiable(statuses);
+  }
+
+  bool isPinging(String profileName) =>
+      _profileNamesBeingPinged.contains(profileName);
+
+  bool canPingProfile(NetworkProfile profile) =>
+      profile.pingTargets.isNotEmpty && !isPinging(profile.name);
 
   bool get _canChangeAdapter =>
       !_isApplying && !_isLoadingAdapters && _selectedAdapterName != null;
@@ -130,6 +152,20 @@ class MainViewModel extends ChangeNotifier {
     await _applyProfileToSelectedAdapter(_dhcpShortcutProfile);
   }
 
+  /// Pings every target of [profile] until it answers or 10 seconds pass,
+  /// updating [pingStatusesFor] as each result comes in.
+  Future<void> pingTargetsOf(NetworkProfile profile) async {
+    if (!canPingProfile(profile)) return;
+    _startPinging(profile);
+    await for (final result in _pingTargetsChecker.checkTargets(
+      profile.pingTargets,
+    )) {
+      _recordPingResult(profile.name, result);
+    }
+    _profileNamesBeingPinged.remove(profile.name);
+    _notifyListenersUnlessDisposed();
+  }
+
   /// Names the editor must not reuse; excludes the profile being edited so
   /// saving it under its own name stays allowed.
   List<String> profileNamesOtherThan(NetworkProfile? profileBeingEdited) => [
@@ -148,7 +184,11 @@ class MainViewModel extends ChangeNotifier {
       if (originalProfile == null) savedProfile,
     ];
     final isStored = await _storeProfiles(updatedProfiles);
-    if (isStored) _selectedProfileName = savedProfile.name;
+    if (isStored) {
+      _selectedProfileName = savedProfile.name;
+      // Results of the old targets no longer describe the edited profile.
+      _pingStatusesByProfileName.remove(originalProfile?.name);
+    }
     notifyListeners();
   }
 
@@ -158,8 +198,11 @@ class MainViewModel extends ChangeNotifier {
         if (profile.name != profileToDelete.name) profile,
     ];
     final isStored = await _storeProfiles(updatedProfiles);
-    if (isStored && _selectedProfileName == profileToDelete.name) {
-      _selectedProfileName = null;
+    if (isStored) {
+      _pingStatusesByProfileName.remove(profileToDelete.name);
+      if (_selectedProfileName == profileToDelete.name) {
+        _selectedProfileName = null;
+      }
     }
     notifyListeners();
   }
@@ -167,6 +210,12 @@ class MainViewModel extends ChangeNotifier {
   void dismissStatusMessage() {
     _statusMessage = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    super.dispose();
   }
 
   Future<void> _loadProfiles() async {
@@ -207,6 +256,42 @@ class MainViewModel extends ChangeNotifier {
     _statusMessage = _describeOutcome(outcome, profile, adapterName);
     _isApplying = false;
     notifyListeners();
+
+    // Adapter actions are already enabled again here; the returned future
+    // only completes after pinging so callers (and tests) can await it.
+    if (outcome is ProfileApplied) await pingTargetsOf(profile);
+  }
+
+  void _startPinging(NetworkProfile profile) {
+    _profileNamesBeingPinged.add(profile.name);
+    _pingStatusesByProfileName[profile.name] = [
+      for (final target in profile.pingTargets)
+        PingTargetStatus(target, PingState.pinging),
+    ];
+    notifyListeners();
+  }
+
+  void _recordPingResult(String profileName, PingTargetResult result) {
+    final statuses = _pingStatusesByProfileName[profileName];
+    // The profile may have been edited or deleted while pinging.
+    if (statuses == null) return;
+    _pingStatusesByProfileName[profileName] = [
+      for (final status in statuses)
+        if (status.target == result.target)
+          PingTargetStatus(
+            result.target,
+            result.isReachable ? PingState.reachable : PingState.unreachable,
+            roundTripTime: result.roundTripTime,
+          )
+        else
+          status,
+    ];
+    _notifyListenersUnlessDisposed();
+  }
+
+  // Pinging runs up to 10 seconds and may outlive the window.
+  void _notifyListenersUnlessDisposed() {
+    if (!_isDisposed) notifyListeners();
   }
 
   // The applier already read the adapter back; reuse that instead of
@@ -269,6 +354,26 @@ class MainViewModel extends ChangeNotifier {
     );
     if (!selectedAdapterStillExists) _selectedAdapterName = null;
   }
+}
+
+enum PingState { pinging, reachable, unreachable }
+
+/// Ping state of one target, shown under its profile card.
+class PingTargetStatus {
+  const PingTargetStatus(this.target, this.state, {this.roundTripTime});
+
+  final PingTarget target;
+  final PingState state;
+  final Duration? roundTripTime;
+
+  String get resultText => switch (state) {
+    PingState.pinging => 'Pinging…',
+    PingState.unreachable => 'No reply',
+    PingState.reachable =>
+      roundTripTime == Duration.zero
+          ? '<1 ms'
+          : '${roundTripTime!.inMilliseconds} ms',
+  };
 }
 
 enum StatusKind { progress, success, error }

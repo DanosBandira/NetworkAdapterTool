@@ -26,6 +26,11 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
   late final TextEditingController _preferredDnsController;
   late final TextEditingController _alternateDnsController;
 
+  // One (name, IP) controller pair per ping target row, keyed by draft id so
+  // removing a row never shifts text into the wrong fields.
+  final Map<int, (TextEditingController, TextEditingController)>
+  _pingTargetControllers = {};
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +58,11 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
       _defaultGatewayController,
       _preferredDnsController,
       _alternateDnsController,
+      for (final (nameController, ipAddressController)
+          in _pingTargetControllers.values) ...[
+        nameController,
+        ipAddressController,
+      ],
     ]) {
       controller.dispose();
     }
@@ -95,6 +105,7 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
                     viewModel.updateAddressingMode(selection.single),
               ),
               if (viewModel.usesStaticAddress) ..._buildStaticFields(viewModel),
+              ..._buildPingTargetSection(viewModel),
             ],
           ),
         ),
@@ -110,6 +121,110 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
         ),
       ],
     );
+  }
+
+  List<Widget> _buildPingTargetSection(
+    NetworkProfileEditorViewModel viewModel,
+  ) {
+    final drafts = viewModel.pingTargetDrafts;
+    _disposeControllersOfRemovedDrafts(drafts);
+    final pingTargetError = viewModel.errorFor(NetworkProfileField.pingTargets);
+    return [
+      const SizedBox(height: 16),
+      Text('Ping targets', style: Theme.of(context).textTheme.titleSmall),
+      Text(
+        'Pinged automatically after applying this profile.',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+      const SizedBox(height: 8),
+      for (final draft in drafts) _buildPingTargetRow(viewModel, draft),
+      if (pingTargetError != null)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            pingTargetError,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: viewModel.addPingTarget,
+          icon: const Icon(Icons.add),
+          label: const Text('Add ping target'),
+        ),
+      ),
+    ];
+  }
+
+  Widget _buildPingTargetRow(
+    NetworkProfileEditorViewModel viewModel,
+    PingTargetDraft draft,
+  ) {
+    final (nameController, ipAddressController) = _pingTargetControllers
+        .putIfAbsent(
+          draft.id,
+          () => (
+            TextEditingController(text: draft.name),
+            TextEditingController(text: draft.ipAddress),
+          ),
+        );
+    return Padding(
+      key: ValueKey(draft.id),
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: TextField(
+              controller: nameController,
+              onChanged: (name) =>
+                  viewModel.updatePingTargetName(draft.id, name),
+              decoration: const InputDecoration(
+                labelText: 'Name (optional)',
+                hintText: 'PLC',
+                isDense: true,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 3,
+            child: TextField(
+              controller: ipAddressController,
+              onChanged: (ipAddress) =>
+                  viewModel.updatePingTargetIpAddress(draft.id, ipAddress),
+              decoration: const InputDecoration(
+                labelText: 'IP address',
+                hintText: '10.100.10.1',
+                isDense: true,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Remove ping target',
+            icon: const Icon(Icons.remove_circle_outline),
+            onPressed: () => viewModel.removePingTarget(draft.id),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _disposeControllersOfRemovedDrafts(List<PingTargetDraft> drafts) {
+    final remainingIds = {for (final draft in drafts) draft.id};
+    final removedIds = _pingTargetControllers.keys
+        .where((id) => !remainingIds.contains(id))
+        .toList();
+    for (final removedId in removedIds) {
+      final (nameController, ipAddressController) = _pingTargetControllers
+          .remove(removedId)!;
+      // The removed row's TextFields are still mounted during this build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        nameController.dispose();
+        ipAddressController.dispose();
+      });
+    }
   }
 
   List<Widget> _buildStaticFields(NetworkProfileEditorViewModel viewModel) {
