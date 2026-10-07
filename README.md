@@ -23,11 +23,12 @@ a machine's subnet, check that the devices answer, and switch back.
   adapters with one click, with a result per line and a Ping button for all
   profiles in the preset.
 - **Search** in the adapter and profile lists.
-- **Load and Save** (top right) to share profiles and presets with other
-  users or PCs. Loading can add to your data (duplicate names get
+- **Import and Export** (top right) to share profiles and presets with other
+  users or PCs. Changes are saved automatically; Export writes a copy to a
+  file of your choice. Importing can add to your data (duplicate names get
   "(imported)") or replace it (after an automatic backup). Preset adapters
   that do not exist on this PC can be mapped to a local adapter while
-  loading; preset cards warn about adapters that are missing.
+  importing; preset cards warn about adapters that are missing.
 
 Windows can only switch an adapter from DHCP to a static address while it is
 connected; the app tells you to connect the cable first instead of leaving

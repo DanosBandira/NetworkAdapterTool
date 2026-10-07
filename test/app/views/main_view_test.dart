@@ -66,8 +66,8 @@ void main() {
     await tester.pumpWidget(NetworkAdapterToolApp(mainViewModel: viewModel));
   }
 
-  // The app bar has a "Save" button too (user data), so editor dialogs are
-  // targeted explicitly.
+  // Scoped to the dialog so the test keeps targeting the editor's button even
+  // if another "Save" appears on the main screen.
   Finder saveButtonInDialog() => find.descendant(
     of: find.byType(AlertDialog),
     matching: find.text('Save'),
@@ -114,10 +114,10 @@ void main() {
     expect(theme.colorScheme.surfaceTint, Colors.transparent);
   });
 
-  testWidgets('shows Load and Save buttons in the app bar', (tester) async {
+  testWidgets('shows Import and Export buttons in the app bar', (tester) async {
     await showApp(tester);
 
-    for (final label in ['Load', 'Save']) {
+    for (final label in ['Import', 'Export']) {
       final button = find.descendant(
         of: find.byType(AppBar),
         matching: find.text(label),

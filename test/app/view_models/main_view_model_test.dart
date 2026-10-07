@@ -246,7 +246,7 @@ void main() {
     });
   });
 
-  group('save and load user data', () {
+  group('export and import user data', () {
     const sharedPreset = NetworkPreset(
       name: 'Line 1',
       assignments: [
@@ -260,7 +260,7 @@ void main() {
     );
     const sharedPath = r'C:\share\line1.json';
 
-    test('saves all profiles and presets to the chosen file', () async {
+    test('exports all profiles and presets to the chosen file', () async {
       final viewModel = await initializedViewModel(
         FakeNetworkAdapterReader([ethernet()]),
       );
@@ -286,7 +286,7 @@ void main() {
       expect(libraryImport!.unknownAdapterNames, ['USB LAN']);
     });
 
-    test('reports a file that cannot be loaded', () async {
+    test('reports a file that cannot be imported', () async {
       final viewModel = await initializedViewModel(
         FakeNetworkAdapterReader([ethernet()]),
       );

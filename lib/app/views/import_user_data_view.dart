@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../view_models/main_view_model.dart';
 
-/// What the user chose in [LoadUserDataView].
-class LoadUserDataChoice {
-  const LoadUserDataChoice({
+/// What the user chose in [ImportUserDataView].
+class ImportUserDataChoice {
+  const ImportUserDataChoice({
     required this.mode,
     required this.newAdapterNamesByImportedName,
   });
@@ -15,12 +15,12 @@ class LoadUserDataChoice {
   final Map<String, String> newAdapterNamesByImportedName;
 }
 
-/// Confirms loading a shared file: merge or replace, and for every preset
+/// Confirms importing a shared file: merge or replace, and for every preset
 /// adapter this PC does not have, which local adapter to use instead.
 ///
-/// Pops with a [LoadUserDataChoice], or with `null` when cancelled.
-class LoadUserDataView extends StatefulWidget {
-  const LoadUserDataView({
+/// Pops with a [ImportUserDataChoice], or with `null` when cancelled.
+class ImportUserDataView extends StatefulWidget {
+  const ImportUserDataView({
     super.key,
     required this.libraryImport,
     required this.localAdapterNames,
@@ -30,10 +30,10 @@ class LoadUserDataView extends StatefulWidget {
   final List<String> localAdapterNames;
 
   @override
-  State<LoadUserDataView> createState() => _LoadUserDataViewState();
+  State<ImportUserDataView> createState() => _ImportUserDataViewState();
 }
 
-class _LoadUserDataViewState extends State<LoadUserDataView> {
+class _ImportUserDataViewState extends State<ImportUserDataView> {
   // Merge is the default: it can never lose data, replace can.
   LibraryImportMode _mode = LibraryImportMode.merge;
   final Map<String, String> _newAdapterNamesByImportedName = {};
@@ -43,7 +43,7 @@ class _LoadUserDataViewState extends State<LoadUserDataView> {
     final theme = Theme.of(context);
     final importedLibrary = widget.libraryImport.library;
     return AlertDialog(
-      title: const Text('Load user data'),
+      title: const Text('Import user data'),
       content: SizedBox(
         width: 480,
         child: SingleChildScrollView(
@@ -67,7 +67,7 @@ class _LoadUserDataViewState extends State<LoadUserDataView> {
                       value: LibraryImportMode.merge,
                       title: Text('Add to my data'),
                       subtitle: Text(
-                        'Existing names are kept; loaded items with the same '
+                        'Existing names are kept; imported items with the same '
                         'name get "(imported)" added.',
                       ),
                     ),
@@ -95,14 +95,14 @@ class _LoadUserDataViewState extends State<LoadUserDataView> {
         FilledButton(
           onPressed: () => Navigator.pop(
             context,
-            LoadUserDataChoice(
+            ImportUserDataChoice(
               mode: _mode,
               newAdapterNamesByImportedName: Map.of(
                 _newAdapterNamesByImportedName,
               ),
             ),
           ),
-          child: const Text('Load'),
+          child: const Text('Import'),
         ),
       ],
     );

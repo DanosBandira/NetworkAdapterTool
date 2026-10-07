@@ -11,7 +11,7 @@ import '../view_models/network_preset_editor_view_model.dart';
 import '../view_models/network_profile_editor_view_model.dart';
 import 'adapter_settings_view.dart';
 import 'left_arrow_border.dart';
-import 'load_user_data_view.dart';
+import 'import_user_data_view.dart';
 import 'network_preset_editor_view.dart';
 import 'network_profile_editor_view.dart';
 
@@ -29,17 +29,17 @@ class MainView extends StatelessWidget {
         actions: [
           TextButton.icon(
             onPressed: viewModel.canTransferUserData
-                ? () => _loadUserData(context)
+                ? () => _importUserData(context)
                 : null,
-            icon: const Icon(Icons.file_open_outlined),
-            label: const Text('Load'),
+            icon: const Icon(Icons.file_download_outlined),
+            label: const Text('Import'),
           ),
           TextButton.icon(
             onPressed: viewModel.canTransferUserData
-                ? () => _saveUserData(context)
+                ? () => _exportUserData(context)
                 : null,
-            icon: const Icon(Icons.save_outlined),
-            label: const Text('Save'),
+            icon: const Icon(Icons.file_upload_outlined),
+            label: const Text('Export'),
           ),
           const SizedBox(width: 8),
         ],
@@ -730,7 +730,7 @@ const _userDataFileTypes = [
   XTypeGroup(label: 'Network Adapter Tool data', extensions: ['json']),
 ];
 
-Future<void> _saveUserData(BuildContext context) async {
+Future<void> _exportUserData(BuildContext context) async {
   final mainViewModel = context.read<MainViewModel>();
   final saveLocation = await getSaveLocation(
     acceptedTypeGroups: _userDataFileTypes,
@@ -743,15 +743,15 @@ Future<void> _saveUserData(BuildContext context) async {
   await mainViewModel.exportUserData(filePath);
 }
 
-Future<void> _loadUserData(BuildContext context) async {
+Future<void> _importUserData(BuildContext context) async {
   final mainViewModel = context.read<MainViewModel>();
   final file = await openFile(acceptedTypeGroups: _userDataFileTypes);
   if (file == null) return;
   final libraryImport = await mainViewModel.prepareImport(file.path);
   if (libraryImport == null || !context.mounted) return;
-  final choice = await showDialog<LoadUserDataChoice>(
+  final choice = await showDialog<ImportUserDataChoice>(
     context: context,
-    builder: (_) => LoadUserDataView(
+    builder: (_) => ImportUserDataView(
       libraryImport: libraryImport,
       localAdapterNames: [
         for (final adapter in mainViewModel.adapters) adapter.name,

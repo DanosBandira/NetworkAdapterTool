@@ -78,7 +78,7 @@ lib/
     └── views/
         ├── main_view.dart
         ├── adapter_settings_view.dart          (double-click: configure adapter directly)
-        ├── load_user_data_view.dart           (merge/replace + adapter mapping)
+        ├── import_user_data_view.dart         (merge/replace + adapter mapping)
         ├── ipv4_settings_fields.dart          (shared DHCP/static + IPv4 fields)
         ├── left_arrow_border.dart
         ├── network_profile_editor_view.dart
@@ -219,11 +219,13 @@ prefix length to a dotted subnet mask. The reader sits behind
   targets of all successfully applied profiles are pinged. Renaming a profile
   updates every preset in the same save; deleting a profile used by a preset
   is refused with a message naming the presets.
-- Load / Save (app bar) share the library as a file in the `user_data.json`
+- Import / Export (app bar) share the library as a file in the `user_data.json`
   format (`NetworkProfileLibraryTransfer`, implemented by
   `JsonNetworkProfileLibraryTransfer`; dialogs via the `file_selector`
   plugin, chosen over PowerShell dialogs because it also supports Linux).
-  Loading is two steps: `prepareImport` reads the file and lists preset
+  Named Import/Export rather than Load/Save on purpose: the app already
+  saves every change automatically, "Save" suggested otherwise.
+  Importing is two steps: `prepareImport` reads the file and lists preset
   adapters this PC lacks; the user maps them to local adapters or keeps the
   name, and picks merge or replace; `completeImport` applies it. Merge
   (`NetworkProfileLibraryMerger`) never overwrites: duplicate names (case

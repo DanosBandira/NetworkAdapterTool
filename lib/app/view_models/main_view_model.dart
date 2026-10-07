@@ -409,17 +409,17 @@ class MainViewModel extends ChangeNotifier {
     try {
       await _libraryTransfer.exportLibrary(_library, filePath);
       _statusMessage = StatusMessage.success(
-        'Saved ${_describeCounts(_library)} to $filePath.',
+        'Exported ${_describeCounts(_library)} to $filePath.',
       );
     } on NetworkProfileStorageException catch (error) {
       _statusMessage = StatusMessage.error(
-        'Could not save user data: ${error.reason}',
+        'Could not export user data: ${error.reason}',
       );
     }
     notifyListeners();
   }
 
-  /// First step of loading a shared file: reads it and lists the preset
+  /// First step of importing a shared file: reads it and lists the preset
   /// adapters this PC does not have, so the user can map them before
   /// [completeImport]. Returns `null` (with an error message) when the file
   /// cannot be used.
@@ -437,7 +437,7 @@ class MainViewModel extends ChangeNotifier {
       );
     } on NetworkProfileStorageException catch (error) {
       _statusMessage = StatusMessage.error(
-        'Could not load user data: ${error.reason}',
+        'Could not import user data: ${error.reason}',
       );
       notifyListeners();
       return null;
@@ -670,7 +670,7 @@ class MainViewModel extends ChangeNotifier {
         : ' ${mergeResult.renamedCount} got "(imported)" added because the '
               'name already existed.';
     _statusMessage = StatusMessage.success(
-      'Added ${_describeCounts(importedLibrary)} from $filePath.$renamedNote',
+      'Imported ${_describeCounts(importedLibrary)} from $filePath.$renamedNote',
     );
   }
 
