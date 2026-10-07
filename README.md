@@ -69,28 +69,24 @@ flutter run -d windows            # from an elevated terminal (requireAdministra
 
 ```
 powershell -ExecutionPolicy Bypass -File tool\build_debug.ps1     # debug build, for testing on this PC
-powershell -ExecutionPolicy Bypass -File tool\build_release.ps1   # release build, can run on any PC
+powershell -ExecutionPolicy Bypass -File tool\build_release.ps1   # release build + dist\NetworkAdapterTool.zip
 ```
 
-Add `-Run` to start the app after building. Both scripts reload PATH (so
-they also work in a terminal opened before Flutter was installed) and stop
-with a clear message when the app is still running, because a running app
-locks its exe.
+`build_release.ps1` always packs the complete Release folder into
+`dist\NetworkAdapterTool.zip`, ready to share. Never distribute the Debug
+build: it depends on the debug Visual C++ runtime, which only exists on PCs
+with Visual Studio installed.
+
+Add `-Run` to start the app after building. Each script ends with a green
+success line or a red failure line and waits for a key, so the result stays
+readable when started by double-click; add `-NoPause` to skip the wait (e.g.
+in automation). Both scripts reload PATH (so they also work in a terminal
+opened before Flutter was installed) and stop with a clear message when the
+app is still running, because a running app locks its exe.
 
 Architecture, design decisions and conventions are documented in
 [CLAUDE.md](CLAUDE.md); [docs/architecture.html](docs/architecture.html)
 visualizes the layers and dependencies.
-
-### Release package
-
-```
-powershell -ExecutionPolicy Bypass -File tool\package_release.ps1
-```
-
-Builds the release version and creates `dist\NetworkAdapterTool.zip` with
-the complete app folder. Use `-SkipBuild` to only re-pack an existing build.
-Never distribute the Debug build: it depends on the debug Visual C++ runtime,
-which only exists on PCs with Visual Studio installed.
 
 ### App icon
 

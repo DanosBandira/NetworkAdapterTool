@@ -89,8 +89,8 @@ test/
 docs/architecture.html                         (layers + dependency graph)
 icon.svg                                       (app icon source)
 tool/svg_to_ico.py                             (icon.svg → app_icon.ico)
-tool/package_release.ps1                       (release build → dist\NetworkAdapterTool.zip)
-tool/build_debug.ps1, tool/build_release.ps1   (build; -Run to start; each self-contained by choice)
+tool/build_debug.ps1                           (debug build; -Run, -NoPause)
+tool/build_release.ps1                         (release build + dist\NetworkAdapterTool.zip; -Run, -NoPause)
 ```
 
 ## Responsibilities
@@ -262,11 +262,15 @@ prefix length to a dotted subnet mask. The reader sits behind
 - Building needs Windows Developer Mode on the build PC: Flutter builds
   plugins (`file_selector`) through symlinks. Without it the build stops with
   "Building with plugins requires symlink support".
-- Distribution: `tool\package_release.ps1` builds release and zips the whole
-  `build\windows\x64\runner\Release` folder (exe, `flutter_windows.dll`, the
-  VC++ runtime DLLs and the `data` folder) into `dist\NetworkAdapterTool.zip`
-  (`dist/` is git-ignored). Users unpack it and create a shortcut to the exe;
-  the exe alone never starts, it loads the rest from its own folder.
+- Distribution: `tool\build_release.ps1` builds release and always zips the
+  whole `build\windows\x64\runner\Release` folder (exe, `flutter_windows.dll`,
+  plugin DLL, VC++ runtime DLLs and the `data` folder) into
+  `dist\NetworkAdapterTool.zip` (`dist/` is git-ignored); a separate
+  packaging script was merged into it on the user's request. Users unpack the
+  zip and create a shortcut to the exe; the exe alone never starts, it loads
+  the rest from its own folder. The build scripts end with a colored
+  success/failure line and wait for a key (`-NoPause` skips that) and exit
+  with code 1 on failure.
   `windows/CMakeLists.txt` installs the VC++ runtime DLLs app-locally for
   Profile/Release, so the target PC needs no VC++ Redistributable (the UCRT
   `api-ms-win-crt-*` DLLs ship with Windows 10/11). Never distribute the
