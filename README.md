@@ -67,7 +67,7 @@ powershell -ExecutionPolicy Bypass -File tool\build_release.ps1   # release buil
 Add `-Run` to start the app after building. Both scripts reload PATH (so
 they also work in a terminal opened before Flutter was installed) and stop
 with a clear message when the app is still running, because a running app
-locks its exe. The shared steps live in `tool\build_common.ps1`.
+locks its exe.
 
 Architecture, design decisions and conventions are documented in
 [CLAUDE.md](CLAUDE.md); [docs/architecture.html](docs/architecture.html)

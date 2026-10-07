@@ -86,7 +86,7 @@ docs/architecture.html                         (layers + dependency graph)
 icon.svg                                       (app icon source)
 tool/svg_to_ico.py                             (icon.svg → app_icon.ico)
 tool/package_release.ps1                       (release build → dist\NetworkAdapterTool.zip)
-tool/build_debug.ps1, tool/build_release.ps1   (build; -Run to start; shared steps in build_common.ps1)
+tool/build_debug.ps1, tool/build_release.ps1   (build; -Run to start; each self-contained by choice)
 ```
 
 ## Responsibilities

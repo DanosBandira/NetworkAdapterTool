@@ -21,8 +21,7 @@ $stagingFolder = Join-Path $distFolder 'NetworkAdapterTool'
 $zipPath = Join-Path $distFolder 'NetworkAdapterTool.zip'
 
 if (-not $SkipBuild) {
-    . (Join-Path $PSScriptRoot 'build_common.ps1')
-    Invoke-WindowsBuild -BuildMode release
+    & (Join-Path $PSScriptRoot 'build_release.ps1')
 }
 
 if (-not (Test-Path (Join-Path $releaseFolder 'network_adapter_tool.exe'))) {
