@@ -12,7 +12,7 @@ import 'package:network_adapter_tool/core/profiles/json_network_profile_reposito
 
 void main() {
   late Directory temporaryDirectory;
-  late File profilesFile;
+  late File userDataFile;
   late JsonNetworkProfileRepository repository;
 
   const officeProfile = NetworkProfile(
@@ -30,19 +30,19 @@ void main() {
   setUp(() async {
     temporaryDirectory = await Directory.systemTemp.createTemp('profiles_test');
     // A missing subfolder checks that saving creates it.
-    profilesFile = File(
-      '${temporaryDirectory.path}\\NetworkAdapterTool\\profiles.json',
+    userDataFile = File(
+      '${temporaryDirectory.path}\\NetworkAdapterTool\\user_data.json',
     );
-    repository = JsonNetworkProfileRepository(profilesFile);
+    repository = JsonNetworkProfileRepository(userDataFile);
   });
 
   tearDown(() async {
     await temporaryDirectory.delete(recursive: true);
   });
 
-  Future<void> writeProfilesFile(String fileContent) async {
-    await profilesFile.parent.create(recursive: true);
-    await profilesFile.writeAsString(fileContent);
+  Future<void> writeUserDataFile(String fileContent) async {
+    await userDataFile.parent.create(recursive: true);
+    await userDataFile.writeAsString(fileContent);
   }
 
   test('loads an empty library when nothing has been saved yet', () async {
@@ -85,10 +85,10 @@ void main() {
       const NetworkProfileLibrary(profiles: [officeProfile]),
     );
 
-    final remainingFiles = profilesFile.parent.listSync().map(
+    final remainingFiles = userDataFile.parent.listSync().map(
       (entity) => entity.path,
     );
-    expect(remainingFiles, [profilesFile.path]);
+    expect(remainingFiles, [userDataFile.path]);
   });
 
   test('writes a versioned, indented JSON document', () async {
@@ -96,7 +96,7 @@ void main() {
       const NetworkProfileLibrary(profiles: [officeProfile]),
     );
 
-    final fileContent = await profilesFile.readAsString();
+    final fileContent = await userDataFile.readAsString();
     expect(fileContent, contains('\n  "formatVersion": 3'));
     expect(jsonDecode(fileContent), {
       'formatVersion': 3,
@@ -149,7 +149,7 @@ void main() {
   });
 
   test('loads a format version 1 file without ping targets', () async {
-    await writeProfilesFile(
+    await writeUserDataFile(
       '{"formatVersion":1,"profiles":[{"name":"Office","addressingMode":"dhcp"}]}',
     );
 
@@ -160,7 +160,7 @@ void main() {
   });
 
   test('loads a format version 2 file without presets', () async {
-    await writeProfilesFile(
+    await writeUserDataFile(
       '{"formatVersion":2,"profiles":[{"name":"Office","addressingMode":"dhcp"}]}',
     );
 
@@ -170,54 +170,9 @@ void main() {
     expect(library.presets, isEmpty);
   });
 
-  group('legacy location from before the rename', () {
-    late File legacyProfilesFile;
-    late JsonNetworkProfileRepository repositoryWithLegacyFile;
-
-    setUp(() async {
-      legacyProfilesFile = File(
-        '${temporaryDirectory.path}\\NetworkProfileSwitcher\\profiles.json',
-      );
-      await legacyProfilesFile.parent.create(recursive: true);
-      await legacyProfilesFile.writeAsString(
-        '{"formatVersion":2,"profiles":[{"name":"Legacy","addressingMode":"dhcp"}]}',
-      );
-      repositoryWithLegacyFile = JsonNetworkProfileRepository(
-        profilesFile,
-        legacyProfilesFile: legacyProfilesFile,
-      );
-    });
-
-    test('is read while the current file does not exist', () async {
-      final library = await repositoryWithLegacyFile.loadLibrary();
-
-      expect(library.profiles.single.name, 'Legacy');
-    });
-
-    test('is ignored once the current file exists', () async {
-      await writeProfilesFile(
-        '{"formatVersion":3,"profiles":[{"name":"Current","addressingMode":"dhcp"}]}',
-      );
-
-      final library = await repositoryWithLegacyFile.loadLibrary();
-
-      expect(library.profiles.single.name, 'Current');
-    });
-
-    test('is kept unchanged when saving to the current location', () async {
-      final legacyContent = await legacyProfilesFile.readAsString();
-      final library = await repositoryWithLegacyFile.loadLibrary();
-
-      await repositoryWithLegacyFile.saveLibrary(library);
-
-      expect(await profilesFile.exists(), isTrue);
-      expect(await legacyProfilesFile.readAsString(), legacyContent);
-    });
-  });
-
   group('refuses to load instead of returning an empty library', () {
     Future<void> expectLoadingFails(String fileContent) async {
-      await writeProfilesFile(fileContent);
+      await writeUserDataFile(fileContent);
 
       await expectLater(
         repository.loadLibrary(),

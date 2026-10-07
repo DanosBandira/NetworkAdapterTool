@@ -14,11 +14,6 @@ param([switch]$SkipBuild)
 
 $ErrorActionPreference = 'Stop'
 
-# Terminals opened before Flutter was added to PATH keep the old PATH and
-# cannot find `flutter`; reload it from the registry.
-$env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' +
-    [Environment]::GetEnvironmentVariable('Path', 'Machine')
-
 $repositoryRoot = Split-Path $PSScriptRoot -Parent
 $releaseFolder = Join-Path $repositoryRoot 'build\windows\x64\runner\Release'
 $distFolder = Join-Path $repositoryRoot 'dist'
@@ -26,13 +21,8 @@ $stagingFolder = Join-Path $distFolder 'NetworkAdapterTool'
 $zipPath = Join-Path $distFolder 'NetworkAdapterTool.zip'
 
 if (-not $SkipBuild) {
-    Push-Location $repositoryRoot
-    try {
-        flutter build windows --release
-        if ($LASTEXITCODE -ne 0) { throw "flutter build failed with exit code $LASTEXITCODE" }
-    } finally {
-        Pop-Location
-    }
+    . (Join-Path $PSScriptRoot 'build_common.ps1')
+    Invoke-WindowsBuild -BuildMode release
 }
 
 if (-not (Test-Path (Join-Path $releaseFolder 'network_adapter_tool.exe'))) {

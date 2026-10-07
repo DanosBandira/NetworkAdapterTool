@@ -91,6 +91,20 @@ void main() {
     },
   );
 
+  testWidgets('uses a neutral white background without seed tint', (
+    tester,
+  ) async {
+    await showApp(tester);
+
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+    final theme = Theme.of(tester.element(find.byType(Scaffold)));
+    expect(
+      scaffold.backgroundColor ?? theme.colorScheme.surface,
+      const Color(0xFFFFFFFF),
+    );
+    expect(theme.colorScheme.surfaceTint, Colors.transparent);
+  });
+
   testWidgets('double-clicking an adapter opens its settings', (tester) async {
     await showApp(tester);
 

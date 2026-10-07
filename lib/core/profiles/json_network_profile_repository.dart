@@ -7,15 +7,12 @@ import '../models/network_profile.dart';
 import '../models/network_profile_library.dart';
 
 /// Stores all profiles and presets in one indented JSON file, by default
-/// `%APPDATA%\NetworkAdapterTool\profiles.json`.
+/// `%APPDATA%\NetworkAdapterTool\user_data.json`.
 ///
 /// The file carries a format version so an older app version refuses a file
 /// written by a newer one instead of overwriting fields it does not know.
 class JsonNetworkProfileRepository implements NetworkProfileRepository {
-  const JsonNetworkProfileRepository(
-    this._profilesFile, {
-    this._legacyProfilesFile,
-  });
+  const JsonNetworkProfileRepository(this._userDataFile);
 
   factory JsonNetworkProfileRepository.inRoamingAppData() {
     final roamingAppDataPath = Platform.environment['APPDATA'];
@@ -25,11 +22,7 @@ class JsonNetworkProfileRepository implements NetworkProfileRepository {
       );
     }
     return JsonNetworkProfileRepository(
-      File('$roamingAppDataPath\\NetworkAdapterTool\\profiles.json'),
-      // The app was called "NetworkProfileSwitcher" until 2026-10-06.
-      legacyProfilesFile: File(
-        '$roamingAppDataPath\\NetworkProfileSwitcher\\profiles.json',
-      ),
+      File('$roamingAppDataPath\\NetworkAdapterTool\\user_data.json'),
     );
   }
 
@@ -41,34 +34,19 @@ class JsonNetworkProfileRepository implements NetworkProfileRepository {
   // dropping data it does not know.
   static const _currentFormatVersion = 3;
 
-  final File _profilesFile;
-
-  // Read only while the current file does not exist yet; the next save
-  // writes to the current location. The legacy file is never changed, so it
-  // stays as a backup.
-  final File? _legacyProfilesFile;
+  final File _userDataFile;
 
   @override
   Future<NetworkProfileLibrary> loadLibrary() async {
-    final fileToRead = await _existingProfilesFile();
-    if (fileToRead == null) return const NetworkProfileLibrary();
-    final fileContent = await _readFile(fileToRead);
-    return _parseLibrary(fileContent, fileToRead);
+    if (!await _userDataFile.exists()) return const NetworkProfileLibrary();
+    final fileContent = await _readFile(_userDataFile);
+    return _parseLibrary(fileContent, _userDataFile);
   }
 
   @override
   Future<void> saveLibrary(NetworkProfileLibrary library) async {
     final fileContent = _serializeLibrary(library);
-    await _replaceProfilesFile(fileContent);
-  }
-
-  Future<File?> _existingProfilesFile() async {
-    if (await _profilesFile.exists()) return _profilesFile;
-    final legacyProfilesFile = _legacyProfilesFile;
-    if (legacyProfilesFile != null && await legacyProfilesFile.exists()) {
-      return legacyProfilesFile;
-    }
-    return null;
+    await _replaceUserDataFile(fileContent);
   }
 
   Future<String> _readFile(File file) async {
@@ -133,15 +111,15 @@ class JsonNetworkProfileRepository implements NetworkProfileRepository {
 
   // Write to a temporary file first and then rename it over the original, so
   // a crash or power loss mid-write never leaves a truncated profile file.
-  Future<void> _replaceProfilesFile(String fileContent) async {
-    final temporaryFile = File('${_profilesFile.path}.tmp');
+  Future<void> _replaceUserDataFile(String fileContent) async {
+    final temporaryFile = File('${_userDataFile.path}.tmp');
     try {
-      await _profilesFile.parent.create(recursive: true);
+      await _userDataFile.parent.create(recursive: true);
       await temporaryFile.writeAsString(fileContent, flush: true);
-      await temporaryFile.rename(_profilesFile.path);
+      await temporaryFile.rename(_userDataFile.path);
     } on FileSystemException catch (error) {
       throw NetworkProfileStorageException(
-        'Cannot write ${_profilesFile.path}: ${error.message}',
+        'Cannot write ${_userDataFile.path}: ${error.message}',
       );
     }
   }

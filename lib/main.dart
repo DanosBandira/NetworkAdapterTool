@@ -64,9 +64,37 @@ class NetworkAdapterToolApp extends StatelessWidget {
 
   ThemeData _buildTheme(Brightness brightness) {
     return ThemeData(
-      colorSchemeSeed: Colors.teal,
-      brightness: brightness,
+      colorScheme: _withNeutralSurfaces(
+        ColorScheme.fromSeed(seedColor: Colors.teal, brightness: brightness),
+      ),
       visualDensity: VisualDensity.compact,
+    );
+  }
+
+  // Material 3 tints every surface with the seed color, which turned the
+  // background mint green. Teal stays for buttons and accents; the background
+  // is white and dialogs and fields use very light neutral greys, so the
+  // colored cards stand out.
+  ColorScheme _withNeutralSurfaces(ColorScheme seeded) {
+    final isDark = seeded.brightness == Brightness.dark;
+    return seeded.copyWith(
+      surface: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFFFFFFF),
+      surfaceContainerLowest: isDark
+          ? const Color(0xFF141414)
+          : const Color(0xFFFFFFFF),
+      surfaceContainerLow: isDark
+          ? const Color(0xFF222222)
+          : const Color(0xFFFAFAFA),
+      surfaceContainer: isDark
+          ? const Color(0xFF262626)
+          : const Color(0xFFF5F5F5),
+      surfaceContainerHigh: isDark
+          ? const Color(0xFF2C2C2C)
+          : const Color(0xFFF0F0F0),
+      surfaceContainerHighest: isDark
+          ? const Color(0xFF333333)
+          : const Color(0xFFEBEBEB),
+      surfaceTint: Colors.transparent,
     );
   }
 }

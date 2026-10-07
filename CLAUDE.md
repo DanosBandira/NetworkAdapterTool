@@ -86,6 +86,7 @@ docs/architecture.html                         (layers + dependency graph)
 icon.svg                                       (app icon source)
 tool/svg_to_ico.py                             (icon.svg → app_icon.ico)
 tool/package_release.ps1                       (release build → dist\NetworkAdapterTool.zip)
+tool/build_debug.ps1, tool/build_release.ps1   (build; -Run to start; shared steps in build_common.ps1)
 ```
 
 ## Responsibilities
@@ -95,7 +96,7 @@ tool/package_release.ps1                       (release build → dist\NetworkAd
 | `PowerShellNetworkAdapterReader` | Read adapters and their current IPv4 settings via a PowerShell script that returns JSON | `CommandRunner` |
 | `NetshNetworkAdapterConfigurator` | Translate a profile into netsh commands | `CommandRunner` |
 | `ProcessCommandRunner` | Start an executable with an argument list, return exit code and output | – |
-| `JsonNetworkProfileRepository` | Load/save the `NetworkProfileLibrary` (profiles + presets) in `%APPDATA%\NetworkAdapterTool\profiles.json`; falls back to the pre-rename `%APPDATA%\NetworkProfileSwitcher\profiles.json` while the new file does not exist and never changes that legacy file | – |
+| `JsonNetworkProfileRepository` | Load/save the `NetworkProfileLibrary` (profiles + presets) in `%APPDATA%\NetworkAdapterTool\user_data.json`; no fallback to older file names or locations (user's choice: keep it clean) | – |
 | `NetworkPresetValidator` | Preset name unique, ≥1 line, lines complete, adapter once, profile exists | – |
 | `NetworkPresetApplier` | Apply preset lines one by one via `NetworkProfileApplier`; a failing line does not stop the rest | profile applier |
 | `NetworkProfileValidator` | Validate IP, subnet mask, gateway in same subnet, DNS addresses | – |
@@ -218,7 +219,7 @@ prefix length to a dotted subnet mask. The reader sits behind
   targets): pings all those profiles concurrently without applying anything.
   Results show under the profile cards and, grouped per profile, in the
   preset card.
-- `profiles.json` is `{"formatVersion": 3, "profiles": [...], "presets":
+- `user_data.json` is `{"formatVersion": 3, "profiles": [...], "presets":
   [...]}` (2 added `pingTargets`, 3 added `presets`; older files still load),
   written to a
   `.tmp` file and renamed over the original. A file that cannot be parsed or
@@ -263,6 +264,11 @@ prefix length to a dotted subnet mask. The reader sits behind
 ## UI conventions
 
 - UI text is English, like the validator messages.
+- Theme: `ColorScheme.fromSeed(Colors.teal)` for buttons and accents, but all
+  surface colors are overridden with neutral tones (light: white background,
+  very light greys for dialogs and fields; user found `0xFFF3F3F3` grey too
+  dark) and `surfaceTint` is transparent, because Material 3 otherwise tints
+  the whole background with the seed color (it looked mint green).
 - Adapter cards sit in a grid of 1–3 columns (minimum card width 240 px,
   `Wrap` so rows grow to the tallest card) with a compact layout: header row
   with icon, name and DHCP/Static, then status and details.
@@ -277,12 +283,12 @@ prefix length to a dotted subnet mask. The reader sits behind
 - View models expose `can…` getters for every action; views only enable a
   button through them. While applying or loading, adapter actions are
   disabled.
-- Profile editing stays disabled when `profiles.json` failed to load, so a
+- Profile editing stays disabled when `user_data.json` failed to load, so a
   save can never overwrite profiles that could not be read.
 - After applying, the adapter returned by `ProfileApplied` replaces the list
   entry instead of triggering a full (slow) re-read.
 - The editor shows two DNS fields like Windows; extra servers from
-  `profiles.json` are kept. Switching a profile to DHCP drops its address
+  `user_data.json` are kept. Switching a profile to DHCP drops its address
   fields.
 
 ## UI

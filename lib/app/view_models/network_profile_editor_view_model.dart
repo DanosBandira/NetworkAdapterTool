@@ -50,7 +50,7 @@ class NetworkProfileEditorViewModel extends ChangeNotifier {
   String _alternateDnsServer;
 
   // The form shows two DNS fields like Windows does; a profile with more
-  // servers (e.g. edited by hand in profiles.json) keeps the rest unchanged.
+  // servers (e.g. edited by hand in user_data.json) keeps the rest unchanged.
   final List<String> _furtherDnsServers;
 
   final List<PingTargetDraft> _pingTargetDrafts = [];
@@ -163,7 +163,7 @@ class NetworkProfileEditorViewModel extends ChangeNotifier {
       _pingTargetDrafts.firstWhere((draft) => draft.id == draftId);
 
   // A DHCP profile drops the address fields, so switching a profile to DHCP
-  // does not keep stale static settings in profiles.json. Ping targets are
+  // does not keep stale static settings in user_data.json. Ping targets are
   // kept for both modes.
   NetworkProfile _buildProfile() {
     if (!usesStaticAddress) {

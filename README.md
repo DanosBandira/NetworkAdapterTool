@@ -45,7 +45,7 @@ The app asks for administrator rights at start (UAC), because changing IP
 settings requires elevation.
 
 Profiles and presets are stored in
-`%APPDATA%\NetworkAdapterTool\profiles.json`.
+`%APPDATA%\NetworkAdapterTool\user_data.json`.
 
 ## Development
 
@@ -56,6 +56,18 @@ Requirements: Flutter (stable) and Visual Studio Build Tools with the
 flutter test                      # unit and widget tests, no elevation needed
 flutter run -d windows            # from an elevated terminal (requireAdministrator)
 ```
+
+### Building
+
+```
+powershell -ExecutionPolicy Bypass -File tool\build_debug.ps1     # debug build, for testing on this PC
+powershell -ExecutionPolicy Bypass -File tool\build_release.ps1   # release build, can run on any PC
+```
+
+Add `-Run` to start the app after building. Both scripts reload PATH (so
+they also work in a terminal opened before Flutter was installed) and stop
+with a clear message when the app is still running, because a running app
+locks its exe. The shared steps live in `tool\build_common.ps1`.
 
 Architecture, design decisions and conventions are documented in
 [CLAUDE.md](CLAUDE.md); [docs/architecture.html](docs/architecture.html)
