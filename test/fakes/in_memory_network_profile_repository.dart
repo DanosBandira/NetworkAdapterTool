@@ -34,4 +34,13 @@ class InMemoryNetworkProfileRepository implements NetworkProfileRepository {
     if (saveError != null) throw saveError!;
     storedLibrary = library;
   }
+
+  /// Snapshots taken by [backupLibrary], oldest first.
+  final List<NetworkProfileLibrary> backups = [];
+
+  @override
+  Future<String?> backupLibrary() async {
+    backups.add(storedLibrary);
+    return 'backup-${backups.length}.json';
+  }
 }

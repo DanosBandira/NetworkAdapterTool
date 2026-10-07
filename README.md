@@ -23,6 +23,11 @@ a machine's subnet, check that the devices answer, and switch back.
   adapters with one click, with a result per line and a Ping button for all
   profiles in the preset.
 - **Search** in the adapter and profile lists.
+- **Load and Save** (top right) to share profiles and presets with other
+  users or PCs. Loading can add to your data (duplicate names get
+  "(imported)") or replace it (after an automatic backup). Preset adapters
+  that do not exist on this PC can be mapped to a local adapter while
+  loading; preset cards warn about adapters that are missing.
 
 Windows can only switch an adapter from DHCP to a static address while it is
 connected; the app tells you to connect the cable first instead of leaving
@@ -49,8 +54,10 @@ Profiles and presets are stored in
 
 ## Development
 
-Requirements: Flutter (stable) and Visual Studio Build Tools with the
-"Desktop development with C++" workload.
+Requirements: Flutter (stable), Visual Studio Build Tools with the
+"Desktop development with C++" workload, and Windows **Developer Mode**
+(`start ms-settings:developers`) on the build PC, because Flutter needs
+symlinks to build plugins. PCs that only run the app need none of this.
 
 ```
 flutter test                      # unit and widget tests, no elevation needed

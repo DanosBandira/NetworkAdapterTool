@@ -170,6 +170,27 @@ void main() {
     expect(library.presets, isEmpty);
   });
 
+  group('backup', () {
+    test('copies the stored file next to it with a timestamp', () async {
+      await repository.saveLibrary(
+        const NetworkProfileLibrary(profiles: [officeProfile]),
+      );
+
+      final backupPath = await repository.backupLibrary();
+
+      expect(backupPath, isNotNull);
+      expect(backupPath, matches(r'user_data\.backup-\d{8}-\d{6}\.json$'));
+      expect(
+        await File(backupPath!).readAsString(),
+        await userDataFile.readAsString(),
+      );
+    });
+
+    test('returns null when nothing was stored yet', () async {
+      expect(await repository.backupLibrary(), isNull);
+    });
+  });
+
   group('refuses to load instead of returning an empty library', () {
     Future<void> expectLoadingFails(String fileContent) async {
       await writeUserDataFile(fileContent);

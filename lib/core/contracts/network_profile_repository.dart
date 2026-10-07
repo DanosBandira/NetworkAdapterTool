@@ -13,6 +13,13 @@ abstract interface class NetworkProfileRepository {
   /// Throws [NetworkProfileStorageException] when the library cannot be
   /// written.
   Future<void> saveLibrary(NetworkProfileLibrary library);
+
+  /// Copies the stored library aside before it is replaced wholesale, e.g.
+  /// by loading a shared file. Returns where the copy is, or `null` when
+  /// nothing was stored yet.
+  ///
+  /// Throws [NetworkProfileStorageException] when the copy cannot be made.
+  Future<String?> backupLibrary();
 }
 
 /// Thrown when profiles cannot be read from or written to storage.

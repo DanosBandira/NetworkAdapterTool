@@ -1,3 +1,4 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -10,6 +11,7 @@ import '../view_models/network_preset_editor_view_model.dart';
 import '../view_models/network_profile_editor_view_model.dart';
 import 'adapter_settings_view.dart';
 import 'left_arrow_border.dart';
+import 'load_user_data_view.dart';
 import 'network_preset_editor_view.dart';
 import 'network_profile_editor_view.dart';
 
@@ -20,8 +22,28 @@ class MainView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final viewModel = context.watch<MainViewModel>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Network Adapter Tool')),
+      appBar: AppBar(
+        title: const Text('Network Adapter Tool'),
+        actions: [
+          TextButton.icon(
+            onPressed: viewModel.canTransferUserData
+                ? () => _loadUserData(context)
+                : null,
+            icon: const Icon(Icons.file_open_outlined),
+            label: const Text('Load'),
+          ),
+          TextButton.icon(
+            onPressed: viewModel.canTransferUserData
+                ? () => _saveUserData(context)
+                : null,
+            icon: const Icon(Icons.save_outlined),
+            label: const Text('Save'),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: Column(
         children: [
           const Expanded(
@@ -704,6 +726,46 @@ class _EmptyPanelText extends StatelessWidget {
   }
 }
 
+const _userDataFileTypes = [
+  XTypeGroup(label: 'Network Adapter Tool data', extensions: ['json']),
+];
+
+Future<void> _saveUserData(BuildContext context) async {
+  final mainViewModel = context.read<MainViewModel>();
+  final saveLocation = await getSaveLocation(
+    acceptedTypeGroups: _userDataFileTypes,
+    suggestedName: 'network_adapter_tool_data.json',
+  );
+  if (saveLocation == null) return;
+  final filePath = saveLocation.path.toLowerCase().endsWith('.json')
+      ? saveLocation.path
+      : '${saveLocation.path}.json';
+  await mainViewModel.exportUserData(filePath);
+}
+
+Future<void> _loadUserData(BuildContext context) async {
+  final mainViewModel = context.read<MainViewModel>();
+  final file = await openFile(acceptedTypeGroups: _userDataFileTypes);
+  if (file == null) return;
+  final libraryImport = await mainViewModel.prepareImport(file.path);
+  if (libraryImport == null || !context.mounted) return;
+  final choice = await showDialog<LoadUserDataChoice>(
+    context: context,
+    builder: (_) => LoadUserDataView(
+      libraryImport: libraryImport,
+      localAdapterNames: [
+        for (final adapter in mainViewModel.adapters) adapter.name,
+      ],
+    ),
+  );
+  if (choice == null) return;
+  await mainViewModel.completeImport(
+    libraryImport,
+    mode: choice.mode,
+    newAdapterNamesByImportedName: choice.newAdapterNamesByImportedName,
+  );
+}
+
 Future<void> _openAdapterSettings(
   BuildContext context,
   NetworkAdapterViewModel adapter,
@@ -884,6 +946,7 @@ class _PresetTile extends StatelessWidget {
               ],
             ),
           ),
+          ..._buildMissingAdapterWarnings(theme, viewModel),
           if (lineStatuses != null) _PresetLineResults(statuses: lineStatuses),
           ..._buildPingResultsPerProfile(context, viewModel),
         ],
@@ -897,6 +960,38 @@ class _PresetTile extends StatelessWidget {
     for (final assignment in preset.assignments)
       '${assignment.adapterName} ← ${assignment.profileName}',
   ].join('\n');
+
+  // A preset loaded from another PC may name adapters this PC lacks; warn
+  // before applying instead of only failing per line afterwards.
+  List<Widget> _buildMissingAdapterWarnings(
+    ThemeData theme,
+    MainViewModel viewModel,
+  ) {
+    return [
+      for (final adapterName in viewModel.missingAdaptersOf(preset))
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                size: 16,
+                color: theme.colorScheme.error,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '$adapterName not found on this PC',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+    ];
+  }
 
   // Same results as under the profile cards, repeated here so the whole
   // preset's reachability is visible in one place.

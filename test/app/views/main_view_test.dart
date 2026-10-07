@@ -13,6 +13,7 @@ import 'package:network_adapter_tool/core/reachability/ping_targets_checker.dart
 import 'package:network_adapter_tool/main.dart';
 
 import '../../fakes/fake_network_adapter_reader.dart';
+import '../../fakes/in_memory_network_profile_library_transfer.dart';
 import '../../fakes/in_memory_network_profile_repository.dart';
 import '../../fakes/recording_network_adapter_configurator.dart';
 import '../../fakes/scripted_host_pinger.dart';
@@ -53,6 +54,7 @@ void main() {
       applier: applier,
       presetApplier: NetworkPresetApplier(applier),
       pingTargetsChecker: PingTargetsChecker(ScriptedHostPinger()),
+      libraryTransfer: InMemoryNetworkProfileLibraryTransfer(),
     );
     await viewModel.initialize();
   });
@@ -63,6 +65,13 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(NetworkAdapterToolApp(mainViewModel: viewModel));
   }
+
+  // The app bar has a "Save" button too (user data), so editor dialogs are
+  // targeted explicitly.
+  Finder saveButtonInDialog() => find.descendant(
+    of: find.byType(AlertDialog),
+    matching: find.text('Save'),
+  );
 
   Future<void> doubleClick(WidgetTester tester, Finder target) async {
     await tester.tap(target);
@@ -103,6 +112,18 @@ void main() {
       const Color(0xFFFFFFFF),
     );
     expect(theme.colorScheme.surfaceTint, Colors.transparent);
+  });
+
+  testWidgets('shows Load and Save buttons in the app bar', (tester) async {
+    await showApp(tester);
+
+    for (final label in ['Load', 'Save']) {
+      final button = find.descendant(
+        of: find.byType(AppBar),
+        matching: find.text(label),
+      );
+      expect(button, findsOneWidget);
+    }
   });
 
   testWidgets('double-clicking an adapter opens its settings', (tester) async {
@@ -233,7 +254,7 @@ void main() {
 
     await tester.tap(find.byTooltip('New preset'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Save'));
+    await tester.tap(saveButtonInDialog());
     await tester.pump();
 
     expect(find.text('New preset'), findsOneWidget);
@@ -276,7 +297,7 @@ void main() {
 
     await tester.tap(find.byTooltip('New profile'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Save'));
+    await tester.tap(saveButtonInDialog());
     await tester.pump();
 
     expect(find.text('New profile'), findsOneWidget);

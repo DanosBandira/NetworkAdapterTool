@@ -51,6 +51,7 @@ lib/
 │   │   ├── network_adapter_reader.dart
 │   │   ├── network_adapter_configurator.dart
 │   │   ├── network_profile_repository.dart
+│   │   ├── network_profile_library_transfer.dart   (load/save to a chosen file)
 │   │   ├── host_pinger.dart
 │   │   └── command_runner.dart
 │   ├── adapters/
@@ -62,6 +63,8 @@ lib/
 │   │   └── ping_targets_checker.dart
 │   ├── profiles/
 │   │   ├── json_network_profile_repository.dart
+│   │   ├── json_network_profile_library_transfer.dart
+│   │   ├── network_profile_library_merger.dart     (merge with "(imported)" renames)
 │   │   ├── network_profile_validator.dart
 │   │   └── network_preset_validator.dart
 │   ├── network_profile_applier.dart
@@ -75,6 +78,7 @@ lib/
     └── views/
         ├── main_view.dart
         ├── adapter_settings_view.dart          (double-click: configure adapter directly)
+        ├── load_user_data_view.dart           (merge/replace + adapter mapping)
         ├── ipv4_settings_fields.dart          (shared DHCP/static + IPv4 fields)
         ├── left_arrow_border.dart
         ├── network_profile_editor_view.dart
@@ -215,6 +219,19 @@ prefix length to a dotted subnet mask. The reader sits behind
   targets of all successfully applied profiles are pinged. Renaming a profile
   updates every preset in the same save; deleting a profile used by a preset
   is refused with a message naming the presets.
+- Load / Save (app bar) share the library as a file in the `user_data.json`
+  format (`NetworkProfileLibraryTransfer`, implemented by
+  `JsonNetworkProfileLibraryTransfer`; dialogs via the `file_selector`
+  plugin, chosen over PowerShell dialogs because it also supports Linux).
+  Loading is two steps: `prepareImport` reads the file and lists preset
+  adapters this PC lacks; the user maps them to local adapters or keeps the
+  name, and picks merge or replace; `completeImport` applies it. Merge
+  (`NetworkProfileLibraryMerger`) never overwrites: duplicate names (case
+  insensitive) become "NAME (imported)", "NAME (imported 2)", and imported
+  presets follow those renames. Replace first copies `user_data.json` to
+  `user_data.backup-YYYYMMDD-HHMMSS.json` and aborts if that fails. Preset
+  cards warn about adapters missing on this PC (only after adapters were
+  read once).
 - Preset "Ping" button (shown when at least one of its profiles has ping
   targets): pings all those profiles concurrently without applying anything.
   Results show under the profile cards and, grouped per profile, in the
@@ -240,6 +257,9 @@ prefix length to a dotted subnet mask. The reader sits behind
 - Because of `requireAdministrator`, `flutter run` must be started from an
   elevated terminal/IDE; otherwise launching the exe fails.
 - `flutter test` needs no elevation (core tests use fakes).
+- Building needs Windows Developer Mode on the build PC: Flutter builds
+  plugins (`file_selector`) through symlinks. Without it the build stops with
+  "Building with plugins requires symlink support".
 - Distribution: `tool\package_release.ps1` builds release and zips the whole
   `build\windows\x64\runner\Release` folder (exe, `flutter_windows.dll`, the
   VC++ runtime DLLs and the `data` folder) into `dist\NetworkAdapterTool.zip`
@@ -349,6 +369,24 @@ Not planned yet; pick up only when the user asks.
 - Open question: which adapters to list. The user's machine has 10, most
   virtual (Hyper-V, VPN, TAP, Bluetooth). Options: all, physical only
   (`Get-NetAdapter -Physical`, preferred), or a user-selectable list.
+
+### Linux version
+
+UI, view models, validation, presets and storage logic are platform
+independent; only the contract implementations are Windows specific. A Linux
+build would need:
+
+| Contract | Windows (now) | Linux |
+|---|---|---|
+| `NetworkAdapterReader` | PowerShell `Get-Net*` | `ip -j addr` / `nmcli` |
+| `NetworkAdapterConfigurator` | `netsh` | `nmcli` (NetworkManager) |
+| `HostPinger` | `ping.exe`, reply = `TTL=` | `ping -c 1 -W 1`, own output parsing |
+| Storage folder | `%APPDATA%\NetworkAdapterTool` | `~/.config/network-adapter-tool` |
+| Elevation | `requireAdministrator` manifest | `pkexec` / polkit |
+
+Re-verify the Windows-specific findings (disconnected DHCP adapters, netsh
+exit codes) for Linux; build on Linux (WSL or CI). `file_selector` already
+supports Linux.
 
 ### Start with Windows
 

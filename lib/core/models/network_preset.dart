@@ -19,6 +19,32 @@ class NetworkPreset {
   bool usesProfile(String profileName) =>
       assignments.any((assignment) => assignment.profileName == profileName);
 
+  Iterable<String> get adapterNames =>
+      assignments.map((assignment) => assignment.adapterName);
+
+  NetworkPreset withName(String newName) =>
+      NetworkPreset(name: newName, assignments: assignments);
+
+  /// The same preset with lines moved to other adapters, e.g. after loading
+  /// a file from a PC whose adapters are named differently. Adapters not in
+  /// [newAdapterNamesByOldName] keep their name.
+  NetworkPreset withAdaptersRenamed(
+    Map<String, String> newAdapterNamesByOldName,
+  ) {
+    return NetworkPreset(
+      name: name,
+      assignments: [
+        for (final assignment in assignments)
+          PresetAssignment(
+            adapterName:
+                newAdapterNamesByOldName[assignment.adapterName] ??
+                assignment.adapterName,
+            profileName: assignment.profileName,
+          ),
+      ],
+    );
+  }
+
   /// The same preset with every reference to [oldProfileName] renamed.
   NetworkPreset withProfileRenamed(
     String oldProfileName,

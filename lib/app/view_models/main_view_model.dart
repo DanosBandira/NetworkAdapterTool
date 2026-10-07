@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/contracts/network_adapter_reader.dart';
+import '../../core/contracts/network_profile_library_transfer.dart';
 import '../../core/contracts/network_profile_repository.dart';
 import '../../core/models/addressing_mode.dart';
 import '../../core/models/network_adapter.dart';
@@ -10,6 +11,7 @@ import '../../core/models/network_profile_library.dart';
 import '../../core/models/ping_target.dart';
 import '../../core/network_preset_applier.dart';
 import '../../core/network_profile_applier.dart';
+import '../../core/profiles/network_profile_library_merger.dart';
 import '../../core/reachability/ping_targets_checker.dart';
 import 'network_adapter_view_model.dart';
 
@@ -25,6 +27,8 @@ class MainViewModel extends ChangeNotifier {
     required this._applier,
     required this._presetApplier,
     required this._pingTargetsChecker,
+    required this._libraryTransfer,
+    this._libraryMerger = const NetworkProfileLibraryMerger(),
   });
 
   // Applied by the "Switch to DHCP" shortcut; never stored.
@@ -41,6 +45,8 @@ class MainViewModel extends ChangeNotifier {
   final NetworkProfileApplier _applier;
   final NetworkPresetApplier _presetApplier;
   final PingTargetsChecker _pingTargetsChecker;
+  final NetworkProfileLibraryTransfer _libraryTransfer;
+  final NetworkProfileLibraryMerger _libraryMerger;
 
   // Ping results stay visible under their profile until the next ping, an
   // edit or a delete of that profile. Preset results likewise per preset.
@@ -57,6 +63,9 @@ class MainViewModel extends ChangeNotifier {
   bool _isLoadingAdapters = false;
   bool _isApplying = false;
   bool _libraryIsLoaded = false;
+
+  // Until adapters were read once, every preset adapter would look missing.
+  bool _adaptersAreLoaded = false;
   StatusMessage? _statusMessage;
   String _adapterSearchText = '';
   String _profileSearchText = '';
@@ -91,6 +100,20 @@ class MainViewModel extends ChangeNotifier {
       _canChangeAdapters && _selectedAdapterName != null;
   bool get canApplyPresets => _canChangeAdapters && _libraryIsLoaded;
   bool get canConfigureAdapters => _canChangeAdapters;
+
+  // Same guard as editing: never overwrite or export a library that failed
+  // to load.
+  bool get canTransferUserData => _libraryIsLoaded && !_isApplying;
+
+  /// Adapters of [preset] that do not exist on this PC (e.g. after loading a
+  /// file from another PC). Empty until adapters have been read once.
+  List<String> missingAdaptersOf(NetworkPreset preset) {
+    if (!_adaptersAreLoaded) return const [];
+    return [
+      for (final adapterName in preset.adapterNames)
+        if (!_isPresentAdapter(adapterName)) adapterName,
+    ];
+  }
 
   // Editing is blocked until loading succeeded: saving over a file that
   // failed to load would replace the user's profiles and presets.
@@ -160,6 +183,7 @@ class MainViewModel extends ChangeNotifier {
       _adapters = [
         for (final adapter in adapters) NetworkAdapterViewModel(adapter),
       ];
+      _adaptersAreLoaded = true;
       _keepAdapterSelectionOnlyIfStillPresent();
     } on NetworkAdapterReadException catch (error) {
       _statusMessage = StatusMessage.error(
@@ -379,6 +403,70 @@ class MainViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Writes all profiles and presets to [filePath] for sharing.
+  Future<void> exportUserData(String filePath) async {
+    if (!canTransferUserData) return;
+    try {
+      await _libraryTransfer.exportLibrary(_library, filePath);
+      _statusMessage = StatusMessage.success(
+        'Saved ${_describeCounts(_library)} to $filePath.',
+      );
+    } on NetworkProfileStorageException catch (error) {
+      _statusMessage = StatusMessage.error(
+        'Could not save user data: ${error.reason}',
+      );
+    }
+    notifyListeners();
+  }
+
+  /// First step of loading a shared file: reads it and lists the preset
+  /// adapters this PC does not have, so the user can map them before
+  /// [completeImport]. Returns `null` (with an error message) when the file
+  /// cannot be used.
+  Future<LibraryImport?> prepareImport(String filePath) async {
+    if (!canTransferUserData) return null;
+    try {
+      final importedLibrary = await _libraryTransfer.importLibrary(filePath);
+      return LibraryImport(
+        filePath: filePath,
+        library: importedLibrary,
+        unknownAdapterNames: [
+          for (final adapterName in importedLibrary.adapterNamesUsedByPresets)
+            if (!_isPresentAdapter(adapterName)) adapterName,
+        ],
+      );
+    } on NetworkProfileStorageException catch (error) {
+      _statusMessage = StatusMessage.error(
+        'Could not load user data: ${error.reason}',
+      );
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// Second step: maps unknown adapters as chosen, then merges the file into
+  /// the current data or replaces it (after a backup).
+  Future<void> completeImport(
+    LibraryImport libraryImport, {
+    required LibraryImportMode mode,
+    required Map<String, String> newAdapterNamesByImportedName,
+  }) async {
+    if (!canTransferUserData) return;
+    final mappedLibrary = libraryImport.library.withAdaptersRenamed(
+      newAdapterNamesByImportedName,
+    );
+    switch (mode) {
+      case LibraryImportMode.merge:
+        await _mergeImportedLibrary(mappedLibrary, libraryImport.filePath);
+      case LibraryImportMode.replace:
+        await _replaceWithImportedLibrary(
+          mappedLibrary,
+          libraryImport.filePath,
+        );
+    }
+    notifyListeners();
+  }
+
   void dismissStatusMessage() {
     _statusMessage = null;
     notifyListeners();
@@ -570,6 +658,66 @@ class MainViewModel extends ChangeNotifier {
     };
   }
 
+  Future<void> _mergeImportedLibrary(
+    NetworkProfileLibrary importedLibrary,
+    String filePath,
+  ) async {
+    final mergeResult = _libraryMerger.merge(_library, importedLibrary);
+    final isStored = await _storeLibrary(mergeResult.library);
+    if (!isStored) return;
+    final renamedNote = mergeResult.renamedCount == 0
+        ? ''
+        : ' ${mergeResult.renamedCount} got "(imported)" added because the '
+              'name already existed.';
+    _statusMessage = StatusMessage.success(
+      'Added ${_describeCounts(importedLibrary)} from $filePath.$renamedNote',
+    );
+  }
+
+  Future<void> _replaceWithImportedLibrary(
+    NetworkProfileLibrary importedLibrary,
+    String filePath,
+  ) async {
+    final String? backupPath;
+    try {
+      backupPath = await _repository.backupLibrary();
+    } on NetworkProfileStorageException catch (error) {
+      // Without a backup the user could lose data they cannot get back.
+      _statusMessage = StatusMessage.error(
+        'Nothing was replaced, the backup failed: ${error.reason}',
+      );
+      return;
+    }
+    final isStored = await _storeLibrary(importedLibrary);
+    if (!isStored) return;
+    _forgetStateOfReplacedLibrary();
+    final backupNote = backupPath == null ? '' : ' Backup: $backupPath';
+    _statusMessage = StatusMessage.success(
+      'Replaced your data with ${_describeCounts(importedLibrary)} from '
+      '$filePath.$backupNote',
+    );
+  }
+
+  void _forgetStateOfReplacedLibrary() {
+    _pingStatusesByProfileName.clear();
+    _lineStatusesByPresetName.clear();
+    if (_profileNamed(_selectedProfileName) == null) {
+      _selectedProfileName = null;
+    }
+  }
+
+  String _describeCounts(NetworkProfileLibrary library) {
+    String counted(int count, String noun) =>
+        '$count $noun${count == 1 ? '' : 's'}';
+    return '${counted(library.profiles.length, 'profile')} and '
+        '${counted(library.presets.length, 'preset')}';
+  }
+
+  // Windows treats adapter names case-insensitively.
+  bool _isPresentAdapter(String adapterName) => _adapters.any(
+    (adapter) => adapter.name.toLowerCase() == adapterName.toLowerCase(),
+  );
+
   NetworkProfile? _profileNamed(String? profileName) => _library.profiles
       .where((profile) => profile.name == profileName)
       .firstOrNull;
@@ -622,6 +770,24 @@ class PresetLineStatus {
 
   /// `null` while pending.
   final String? message;
+}
+
+enum LibraryImportMode { merge, replace }
+
+/// A shared file that has been read but not applied yet; see
+/// [MainViewModel.prepareImport].
+class LibraryImport {
+  const LibraryImport({
+    required this.filePath,
+    required this.library,
+    required this.unknownAdapterNames,
+  });
+
+  final String filePath;
+  final NetworkProfileLibrary library;
+
+  /// Adapters used by the file's presets that this PC does not have.
+  final List<String> unknownAdapterNames;
 }
 
 enum StatusKind { progress, success, error }

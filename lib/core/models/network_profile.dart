@@ -55,6 +55,20 @@ class NetworkProfile {
   /// static profiles.
   final List<PingTarget> pingTargets;
 
+  /// The same settings under another name, e.g. to avoid a duplicate when
+  /// merging imported profiles.
+  NetworkProfile withName(String newName) {
+    return NetworkProfile(
+      name: newName,
+      addressingMode: addressingMode,
+      ipAddress: ipAddress,
+      subnetMask: subnetMask,
+      defaultGateway: defaultGateway,
+      dnsServers: dnsServers,
+      pingTargets: pingTargets,
+    );
+  }
+
   Map<String, Object?> toJson() {
     return {
       'name': name,

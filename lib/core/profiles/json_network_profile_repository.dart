@@ -44,6 +44,35 @@ class JsonNetworkProfileRepository implements NetworkProfileRepository {
   }
 
   @override
+  Future<String?> backupLibrary() async {
+    if (!await _userDataFile.exists()) return null;
+    final backupFile = File(_backupPathFor(DateTime.now()));
+    try {
+      await _userDataFile.copy(backupFile.path);
+      return backupFile.path;
+    } on FileSystemException catch (error) {
+      throw NetworkProfileStorageException(
+        'Cannot back up ${_userDataFile.path}: ${error.message}',
+      );
+    }
+  }
+
+  // e.g. user_data.backup-20261007-143005.json next to user_data.json.
+  String _backupPathFor(DateTime moment) {
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    final timestamp =
+        '${moment.year}${twoDigits(moment.month)}${twoDigits(moment.day)}-'
+        '${twoDigits(moment.hour)}${twoDigits(moment.minute)}'
+        '${twoDigits(moment.second)}';
+    final path = _userDataFile.path;
+    final extensionStart = path.lastIndexOf('.');
+    return extensionStart == -1
+        ? '$path.backup-$timestamp'
+        : '${path.substring(0, extensionStart)}.backup-$timestamp'
+              '${path.substring(extensionStart)}';
+  }
+
+  @override
   Future<void> saveLibrary(NetworkProfileLibrary library) async {
     final fileContent = _serializeLibrary(library);
     await _replaceUserDataFile(fileContent);

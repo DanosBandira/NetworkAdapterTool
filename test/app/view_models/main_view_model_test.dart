@@ -7,6 +7,7 @@ import 'package:network_adapter_tool/core/models/addressing_mode.dart';
 import 'package:network_adapter_tool/core/models/network_adapter.dart';
 import 'package:network_adapter_tool/core/models/network_profile.dart';
 import 'package:network_adapter_tool/core/models/network_preset.dart';
+import 'package:network_adapter_tool/core/models/network_profile_library.dart';
 import 'package:network_adapter_tool/core/network_preset_applier.dart';
 import 'package:network_adapter_tool/core/network_profile_applier.dart';
 import 'package:network_adapter_tool/core/models/ping_target.dart';
@@ -14,6 +15,7 @@ import 'package:network_adapter_tool/core/profiles/network_profile_validator.dar
 import 'package:network_adapter_tool/core/reachability/ping_targets_checker.dart';
 
 import '../../fakes/fake_network_adapter_reader.dart';
+import '../../fakes/in_memory_network_profile_library_transfer.dart';
 import '../../fakes/in_memory_network_profile_repository.dart';
 import '../../fakes/recording_network_adapter_configurator.dart';
 import '../../fakes/scripted_host_pinger.dart';
@@ -48,6 +50,7 @@ void main() {
   late RecordingNetworkAdapterConfigurator configurator;
   late InMemoryNetworkProfileRepository repository;
   late ScriptedHostPinger pinger;
+  late InMemoryNetworkProfileLibraryTransfer libraryTransfer;
 
   setUp(() {
     configurator = RecordingNetworkAdapterConfigurator();
@@ -55,6 +58,7 @@ void main() {
       storedProfiles: [machineProfile, officeProfile],
     );
     pinger = ScriptedHostPinger();
+    libraryTransfer = InMemoryNetworkProfileLibraryTransfer();
   });
 
   MainViewModel createViewModel(NetworkAdapterReader reader) {
@@ -74,6 +78,7 @@ void main() {
         tryFor: const Duration(milliseconds: 50),
         pauseAfterFailedAttempt: const Duration(milliseconds: 5),
       ),
+      libraryTransfer: libraryTransfer,
     );
   }
 
@@ -238,6 +243,127 @@ void main() {
 
       expect(viewModel.statusMessage?.kind, StatusKind.error);
       expect(viewModel.statusMessage?.text, contains('addressingMode'));
+    });
+  });
+
+  group('save and load user data', () {
+    const sharedPreset = NetworkPreset(
+      name: 'Line 1',
+      assignments: [
+        PresetAssignment(adapterName: 'Ethernet', profileName: 'Machine'),
+        PresetAssignment(adapterName: 'USB LAN', profileName: 'Machine'),
+      ],
+    );
+    const sharedFile = NetworkProfileLibrary(
+      profiles: [machineProfile],
+      presets: [sharedPreset],
+    );
+    const sharedPath = r'C:\share\line1.json';
+
+    test('saves all profiles and presets to the chosen file', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      await viewModel.exportUserData(sharedPath);
+
+      expect(libraryTransfer.filesByPath[sharedPath]!.profiles, [
+        machineProfile,
+        officeProfile,
+      ]);
+      expect(viewModel.statusMessage?.kind, StatusKind.success);
+      expect(viewModel.statusMessage?.text, contains('2 profiles'));
+    });
+
+    test('lists preset adapters that this PC does not have', () async {
+      libraryTransfer.filesByPath[sharedPath] = sharedFile;
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      final libraryImport = await viewModel.prepareImport(sharedPath);
+
+      expect(libraryImport!.unknownAdapterNames, ['USB LAN']);
+    });
+
+    test('reports a file that cannot be loaded', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      final libraryImport = await viewModel.prepareImport(r'C:\missing.json');
+
+      expect(libraryImport, isNull);
+      expect(viewModel.statusMessage?.kind, StatusKind.error);
+    });
+
+    test('merges, renaming duplicates and mapping adapters', () async {
+      libraryTransfer.filesByPath[sharedPath] = sharedFile;
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      final libraryImport = await viewModel.prepareImport(sharedPath);
+
+      await viewModel.completeImport(
+        libraryImport!,
+        mode: LibraryImportMode.merge,
+        newAdapterNamesByImportedName: {'USB LAN': 'Ethernet 2'},
+      );
+
+      expect(repository.storedProfiles.map((profile) => profile.name), [
+        'Machine',
+        'Office',
+        'Machine (imported)',
+      ]);
+      final mergedPreset = repository.storedPresets.single;
+      expect(mergedPreset.assignments, const [
+        PresetAssignment(
+          adapterName: 'Ethernet',
+          profileName: 'Machine (imported)',
+        ),
+        PresetAssignment(
+          adapterName: 'Ethernet 2',
+          profileName: 'Machine (imported)',
+        ),
+      ]);
+      expect(repository.backups, isEmpty);
+      expect(viewModel.statusMessage?.text, contains('(imported)'));
+    });
+
+    test('replaces after making a backup', () async {
+      libraryTransfer.filesByPath[sharedPath] = sharedFile;
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      viewModel.selectProfile('Office');
+      final libraryImport = await viewModel.prepareImport(sharedPath);
+
+      await viewModel.completeImport(
+        libraryImport!,
+        mode: LibraryImportMode.replace,
+        newAdapterNamesByImportedName: const {},
+      );
+
+      expect(repository.backups.single.profiles, [
+        machineProfile,
+        officeProfile,
+      ]);
+      expect(repository.storedProfiles, [machineProfile]);
+      expect(repository.storedPresets.single.name, 'Line 1');
+      expect(viewModel.selectedProfileName, isNull);
+      expect(viewModel.statusMessage?.text, contains('Backup'));
+    });
+
+    test('warns about preset adapters missing on this PC', () async {
+      repository = InMemoryNetworkProfileRepository(
+        storedProfiles: [machineProfile],
+        storedPresets: [sharedPreset],
+      );
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      expect(viewModel.missingAdaptersOf(sharedPreset), ['USB LAN']);
     });
   });
 

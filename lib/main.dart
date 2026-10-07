@@ -11,6 +11,7 @@ import 'core/adapters/powershell_network_adapter_reader.dart';
 import 'core/adapters/process_command_runner.dart';
 import 'core/network_preset_applier.dart';
 import 'core/network_profile_applier.dart';
+import 'core/profiles/json_network_profile_library_transfer.dart';
 import 'core/profiles/json_network_profile_repository.dart';
 import 'core/profiles/network_profile_validator.dart';
 import 'core/reachability/ping_targets_checker.dart';
@@ -40,6 +41,7 @@ MainViewModel _composeMainViewModel() {
     pingTargetsChecker: const PingTargetsChecker(
       PingExeHostPinger(commandRunner),
     ),
+    libraryTransfer: const JsonNetworkProfileLibraryTransfer(),
   );
 }
 

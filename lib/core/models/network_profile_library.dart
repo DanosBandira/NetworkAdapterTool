@@ -13,6 +13,21 @@ class NetworkProfileLibrary {
   final List<NetworkProfile> profiles;
   final List<NetworkPreset> presets;
 
+  /// Every adapter name used by a preset, each once, in preset order.
+  List<String> get adapterNamesUsedByPresets =>
+      {for (final preset in presets) ...preset.adapterNames}.toList();
+
+  NetworkProfileLibrary withAdaptersRenamed(
+    Map<String, String> newAdapterNamesByOldName,
+  ) {
+    return copyWith(
+      presets: [
+        for (final preset in presets)
+          preset.withAdaptersRenamed(newAdapterNamesByOldName),
+      ],
+    );
+  }
+
   NetworkProfileLibrary copyWith({
     List<NetworkProfile>? profiles,
     List<NetworkPreset>? presets,
