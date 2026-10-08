@@ -10,6 +10,7 @@ import '../view_models/network_adapter_view_model.dart';
 import '../view_models/network_preset_editor_view_model.dart';
 import '../view_models/network_profile_editor_view_model.dart';
 import 'adapter_settings_view.dart';
+import 'help_view.dart';
 import 'left_arrow_border.dart';
 import 'import_user_data_view.dart';
 import 'network_preset_editor_view.dart';
@@ -40,6 +41,14 @@ class MainView extends StatelessWidget {
                 : null,
             icon: const Icon(Icons.file_upload_outlined),
             label: const Text('Export'),
+          ),
+          TextButton.icon(
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => const HelpView(),
+            ),
+            icon: const Icon(Icons.help_outline),
+            label: const Text('Help'),
           ),
           const SizedBox(width: 8),
         ],

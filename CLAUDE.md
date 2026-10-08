@@ -78,6 +78,7 @@ lib/
     └── views/
         ├── main_view.dart
         ├── adapter_settings_view.dart          (double-click: configure adapter directly)
+        ├── help_view.dart                     (help overlay; text in _helpSections)
         ├── import_user_data_view.dart         (merge/replace + adapter mapping)
         ├── ipv4_settings_fields.dart          (shared DHCP/static + IPv4 fields)
         ├── left_arrow_border.dart
@@ -342,6 +343,10 @@ prefix length to a dotted subnet mask. The reader sits behind
   `MainViewModel.switchSelectedAdapterToDhcp` and its tests remain so it can
   come back.
 - Profile editor: create, edit, delete profiles with inline validation.
+- Help (app bar, next to Import/Export) opens `HelpView`, a dialog over the
+  main window explaining adapters, profiles, presets, import/export and the
+  disconnected-adapter limitation. Keep its text (`_helpSections`) in sync
+  when behavior visible to the user changes.
 
 ## Build order
 

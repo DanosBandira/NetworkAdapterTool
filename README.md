@@ -23,6 +23,7 @@ a machine's subnet, check that the devices answer, and switch back.
   adapters with one click, with a result per line and a Ping button for all
   profiles in the preset.
 - **Search** in the adapter and profile lists.
+- **Help** (top right) explains all of the above inside the app.
 - **Import and Export** (top right) to share profiles and presets with other
   users or PCs. Changes are saved automatically; Export writes a copy to a
   file of your choice. Importing can add to your data (duplicate names get

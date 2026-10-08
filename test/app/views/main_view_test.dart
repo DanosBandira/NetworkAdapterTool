@@ -126,6 +126,27 @@ void main() {
     }
   });
 
+  testWidgets('opens and closes the help overlay', (tester) async {
+    await showApp(tester);
+
+    await tester.tap(find.text('Help'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('How to use Network Adapter Tool'), findsOneWidget);
+    for (final sectionTitle in [
+      'Adapters (left)',
+      'Profiles (top right)',
+      'Presets (bottom right)',
+    ]) {
+      expect(find.text(sectionTitle), findsOneWidget);
+    }
+
+    await tester.tap(find.byTooltip('Close help'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('How to use Network Adapter Tool'), findsNothing);
+  });
+
   testWidgets('double-clicking an adapter opens its settings', (tester) async {
     await showApp(tester);
 
