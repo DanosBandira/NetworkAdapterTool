@@ -9,9 +9,11 @@ import '../view_models/main_view_model.dart';
 import '../view_models/network_adapter_view_model.dart';
 import '../view_models/network_preset_editor_view_model.dart';
 import '../view_models/network_profile_editor_view_model.dart';
+import 'adapter_card.dart';
 import 'adapter_settings_view.dart';
+import 'apply_arrow_button.dart';
+import 'card_colors.dart';
 import 'help_view.dart';
-import 'left_arrow_border.dart';
 import 'import_user_data_view.dart';
 import 'network_preset_editor_view.dart';
 import 'network_profile_editor_view.dart';
@@ -164,7 +166,7 @@ class _AdapterGrid extends StatelessWidget {
               for (final adapter in viewModel.visibleAdapters)
                 SizedBox(
                   width: cardWidth,
-                  child: _AdapterTile(
+                  child: AdapterCard(
                     adapter: adapter,
                     isSelected: adapter.name == viewModel.selectedAdapterName,
                     onTap: () => viewModel.selectAdapter(adapter.name),
@@ -188,124 +190,6 @@ class _AdapterGrid extends StatelessWidget {
     final totalSpacing = (columns - 1) * _spacing;
     // Floor avoids a rounding overflow that would wrap the last card early.
     return ((availableWidth - totalSpacing) / columns).floorToDouble();
-  }
-}
-
-class _AdapterTile extends StatelessWidget {
-  const _AdapterTile({
-    required this.adapter,
-    required this.isSelected,
-    required this.onTap,
-    required this.onDoubleTap,
-  });
-
-  static const _connectedBackgroundLight = Color(0xFFE6F4EA);
-  static const _connectedBackgroundDark = Color(0xFF1E3A2A);
-  static const _notConnectedBackgroundLight = Color(0xFFFCE8E6);
-  static const _notConnectedBackgroundDark = Color(0xFF3D2222);
-  static const _selectedConnectedBackgroundLight = Color(0xFFB4DDBF);
-  static const _selectedConnectedBackgroundDark = Color(0xFF2E5C40);
-  static const _selectedNotConnectedBackgroundLight = Color(0xFFF4B6AE);
-  static const _selectedNotConnectedBackgroundDark = Color(0xFF633030);
-
-  final NetworkAdapterViewModel adapter;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  /// Opens the adapter settings dialog; `null` while adapters are busy.
-  final VoidCallback? onDoubleTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    final statusColor = adapter.isConnected ? colors.primary : colors.outline;
-    final detailStyle = theme.textTheme.bodySmall?.copyWith(
-      color: colors.onSurfaceVariant,
-    );
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      color: _connectionBackground(theme.brightness),
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: isSelected
-            ? BorderSide(color: colors.primary, width: 2)
-            : BorderSide.none,
-      ),
-      // Select on the raw pointer-down: with a double-tap handler, the tap
-      // gesture (even onTapDown) only resolves after the double-tap timeout,
-      // which made selecting feel laggy.
-      child: Listener(
-        onPointerDown: (_) => onTap(),
-        child: InkWell(
-          onTap: onTap,
-          onDoubleTap: onDoubleTap,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.lan_outlined, color: statusColor, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        adapter.name,
-                        style: theme.textTheme.titleSmall,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      adapter.addressingModeText,
-                      style: theme.textTheme.labelLarge,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  adapter.statusText,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: statusColor,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  adapter.description,
-                  style: detailStyle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                for (final detailLine in [
-                  adapter.addressText,
-                  ?adapter.gatewayText,
-                  ?adapter.dnsServersText,
-                ])
-                  Text(detailLine, style: detailStyle),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // The selected card keeps its connection color, only a darker shade.
-  Color _connectionBackground(Brightness brightness) {
-    final isDark = brightness == Brightness.dark;
-    return switch ((adapter.isConnected, isSelected, isDark)) {
-      (true, false, false) => _connectedBackgroundLight,
-      (true, false, true) => _connectedBackgroundDark,
-      (true, true, false) => _selectedConnectedBackgroundLight,
-      (true, true, true) => _selectedConnectedBackgroundDark,
-      (false, false, false) => _notConnectedBackgroundLight,
-      (false, false, true) => _notConnectedBackgroundDark,
-      (false, true, false) => _selectedNotConnectedBackgroundLight,
-      (false, true, true) => _selectedNotConnectedBackgroundDark,
-    };
   }
 }
 
@@ -364,11 +248,6 @@ class _ProfileTile extends StatelessWidget {
     required this.canEdit,
   });
 
-  static const _profileBackgroundLight = Color(0xFFFFF6D5);
-  static const _profileBackgroundDark = Color(0xFF3A3320);
-  static const _selectedProfileBackgroundLight = Color(0xFFFFE38C);
-  static const _selectedProfileBackgroundDark = Color(0xFF5E5024);
-
   final NetworkProfile profile;
   final bool isSelected;
   final bool canEdit;
@@ -380,7 +259,7 @@ class _ProfileTile extends StatelessWidget {
     final pingStatuses = viewModel.pingStatusesFor(profile.name);
     return Card(
       elevation: 0,
-      color: _profileBackground(theme.brightness),
+      color: CardColors.profile(theme.brightness, isSelected: isSelected),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: isSelected
@@ -441,16 +320,6 @@ class _ProfileTile extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  Color _profileBackground(Brightness brightness) {
-    final isDark = brightness == Brightness.dark;
-    if (isSelected) {
-      return isDark
-          ? _selectedProfileBackgroundDark
-          : _selectedProfileBackgroundLight;
-    }
-    return isDark ? _profileBackgroundDark : _profileBackgroundLight;
   }
 
   String _describeProfile(NetworkProfile profile) {
@@ -548,7 +417,7 @@ class _ActionBar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Center(
-            child: _ApplyArrowButton(
+            child: ApplyArrowButton(
               onPressed: viewModel.canApplySelectedProfile
                   ? viewModel.applySelectedProfileToSelectedAdapter
                   : null,
@@ -558,39 +427,6 @@ class _ActionBar extends StatelessWidget {
           _StatusLine(message: viewModel.statusMessage),
         ],
       ),
-    );
-  }
-}
-
-/// The main action, shaped as an arrow pointing from the profiles (right)
-/// to the adapters (left).
-class _ApplyArrowButton extends StatelessWidget {
-  const _ApplyArrowButton({required this.onPressed});
-
-  static const _height = 52.0;
-
-  // Orange stands out from the green, red and yellow cards; the disabled
-  // state keeps the theme's grey so it is clear when nothing can be applied.
-  static const _background = Color(0xFFF57C00);
-  static const _foreground = Colors.white;
-
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    const headWidth = _height * LeftArrowBorder.headWidthFactor;
-    return FilledButton(
-      onPressed: onPressed,
-      style: FilledButton.styleFrom(
-        shape: const LeftArrowBorder(),
-        backgroundColor: _background,
-        foregroundColor: _foreground,
-        minimumSize: const Size(0, _height),
-        // Extra room on the left keeps the text out of the arrow head.
-        padding: const EdgeInsets.fromLTRB(headWidth + 12, 0, 28, 0),
-        textStyle: Theme.of(context).textTheme.titleMedium,
-      ),
-      child: const Text('Apply profile to selected adapter'),
     );
   }
 }
@@ -909,9 +745,6 @@ class _PresetPanel extends StatelessWidget {
 class _PresetTile extends StatelessWidget {
   const _PresetTile({required this.preset});
 
-  static const _presetBackgroundLight = Color(0xFFEDE7F6);
-  static const _presetBackgroundDark = Color(0xFF2E2640);
-
   final NetworkPreset preset;
 
   @override
@@ -921,9 +754,7 @@ class _PresetTile extends StatelessWidget {
     final lineStatuses = viewModel.lineStatusesFor(preset.name);
     return Card(
       elevation: 0,
-      color: theme.brightness == Brightness.dark
-          ? _presetBackgroundDark
-          : _presetBackgroundLight,
+      color: CardColors.preset(theme.brightness),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

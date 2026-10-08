@@ -126,20 +126,51 @@ void main() {
     }
   });
 
-  testWidgets('opens and closes the help overlay', (tester) async {
+  testWidgets('walks through the help steps and closes with Done', (
+    tester,
+  ) async {
     await showApp(tester);
-
     await tester.tap(find.text('Help'));
     await tester.pumpAndSettle();
 
     expect(find.text('How to use Network Adapter Tool'), findsOneWidget);
-    for (final sectionTitle in [
+    expect(find.text('Step 1 of 6'), findsOneWidget);
+    expect(find.text('Change an adapter directly'), findsOneWidget);
+    // The example shows the real adapter settings dialog.
+    expect(find.text('Double-click to change'), findsOneWidget);
+    expect(find.text('Configure Ethernet'), findsOneWidget);
+
+    for (final stepTitle in [
       'Adapters (left)',
       'Profiles (top right)',
       'Presets (bottom right)',
+      'Import and Export (top right)',
+      'Good to know',
     ]) {
-      expect(find.text(sectionTitle), findsOneWidget);
+      await tester.tap(find.text('Next'));
+      await tester.pumpAndSettle();
+      expect(find.text(stepTitle), findsOneWidget);
     }
+
+    expect(find.text('Step 6 of 6'), findsOneWidget);
+    expect(find.text('Next'), findsNothing);
+
+    await tester.tap(find.text('Back'));
+    await tester.pumpAndSettle();
+    expect(find.text('Import and Export (top right)'), findsOneWidget);
+
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('How to use Network Adapter Tool'), findsNothing);
+  });
+
+  testWidgets('closes the help with the close button', (tester) async {
+    await showApp(tester);
+    await tester.tap(find.text('Help'));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('Close help'));
     await tester.pumpAndSettle();

@@ -77,8 +77,12 @@ lib/
     │   └── network_preset_editor_view_model.dart
     └── views/
         ├── main_view.dart
+        ├── adapter_card.dart                  (adapter card; also used in help)
         ├── adapter_settings_view.dart          (double-click: configure adapter directly)
-        ├── help_view.dart                     (help overlay; text in _helpSections)
+        ├── apply_arrow_button.dart            (orange arrow; also used in help)
+        ├── card_colors.dart                   (profile/preset card colors)
+        ├── help_view.dart                     (step-by-step help; steps in _helpSteps)
+        ├── help_examples.dart                 (example pictures per help step)
         ├── import_user_data_view.dart         (merge/replace + adapter mapping)
         ├── ipv4_settings_fields.dart          (shared DHCP/static + IPv4 fields)
         ├── left_arrow_border.dart
@@ -343,10 +347,17 @@ prefix length to a dotted subnet mask. The reader sits behind
   `MainViewModel.switchSelectedAdapterToDhcp` and its tests remain so it can
   come back.
 - Profile editor: create, edit, delete profiles with inline validation.
-- Help (app bar, next to Import/Export) opens `HelpView`, a dialog over the
-  main window explaining adapters, profiles, presets, import/export and the
-  disconnected-adapter limitation. Keep its text (`_helpSections`) in sync
-  when behavior visible to the user changes.
+- Help (app bar, next to Import/Export) opens `HelpView`, a step-by-step
+  dialog (Back/Next/Done, clickable dots, "Step x of 6"). Each step shows an
+  example from `help_examples.dart` with an orange `HelpCallout` frame and
+  label, plus a few points: 1 double-click to change an adapter (real
+  `AdapterCard` + real `AdapterSettingsView`), 2 adapter colors, 3 profiles
+  + arrow button, 4 presets, 5 import/export, 6 good to know. Examples reuse
+  the real widgets (`AdapterCard`, `ApplyArrowButton`, `CardColors`) with
+  sample data inside `IgnorePointer`, so they keep matching the app; chosen
+  over a coach-mark tour on the live screen, which breaks when there are no
+  adapters/profiles or the list is filtered. Keep `_helpSteps` in sync when
+  behavior visible to the user changes; the user edited the wording.
 
 ## Build order
 

@@ -1,132 +1,236 @@
 import 'package:flutter/material.dart';
 
-/// Help overlay explaining the main window: adapters, profiles, presets and
-/// import/export. Opened from the app bar; closes with the close button, Esc
-/// or a click next to it.
+import 'help_examples.dart';
+
+/// Help overlay that walks through the app in steps: per step an example of
+/// that part of the app (see help_examples.dart) and a few short points.
+/// Opened from the app bar; closes with the close button, Done on the last
+/// step, Esc or a click next to it.
 ///
-/// The text lives in [_helpSections] so it can be updated without touching
-/// the layout.
-class HelpView extends StatelessWidget {
+/// The steps live in [_helpSteps] so text and order can be changed without
+/// touching the layout.
+class HelpView extends StatefulWidget {
   const HelpView({super.key});
 
   @override
+  State<HelpView> createState() => _HelpViewState();
+}
+
+class _HelpViewState extends State<HelpView> {
+  int _stepIndex = 0;
+
+  _HelpStep get _step => _helpSteps[_stepIndex];
+  bool get _isFirstStep => _stepIndex == 0;
+  bool get _isLastStep => _stepIndex == _helpSteps.length - 1;
+
+  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Dialog(
       insetPadding: const EdgeInsets.all(32),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
+        constraints: const BoxConstraints(maxWidth: 820, maxHeight: 720),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 8, 8),
-              child: Row(
-                children: [
-                  Icon(Icons.help_outline, color: theme.colorScheme.primary),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'How to use Network Adapter Tool',
-                      style: theme.textTheme.titleLarge,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Close help',
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
+            _buildHeader(context),
             const Divider(height: 1),
             Flexible(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final section in _helpSections)
-                      _HelpSectionView(section: section),
-                  ],
+                padding: const EdgeInsets.fromLTRB(32, 24, 32, 24),
+                child: _HelpStepView(
+                  // A new key per step resets the scroll position.
+                  key: ValueKey(_stepIndex),
+                  step: _step,
                 ),
               ),
             ),
+            const Divider(height: 1),
+            _buildNavigation(context),
           ],
         ),
       ),
     );
   }
-}
 
-class _HelpSectionView extends StatelessWidget {
-  const _HelpSectionView({required this.section});
-
-  final _HelpSection section;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildHeader(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(24, 16, 8, 8),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(section.icon, size: 20, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              Text(section.title, style: theme.textTheme.titleMedium),
-            ],
-          ),
-          const SizedBox(height: 6),
-          for (final point in section.points)
-            Padding(
-              padding: const EdgeInsets.only(left: 28, bottom: 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('•  '),
-                  Expanded(
-                    child: Text(point, style: theme.textTheme.bodyMedium),
-                  ),
-                ],
-              ),
+          Icon(Icons.help_outline, color: theme.colorScheme.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'How to use Network Adapter Tool',
+              style: theme.textTheme.titleLarge,
             ),
+          ),
+          Text(
+            'Step ${_stepIndex + 1} of ${_helpSteps.length}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.outline,
+            ),
+          ),
+          IconButton(
+            tooltip: 'Close help',
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(context),
+          ),
         ],
       ),
     );
   }
+
+  Widget _buildNavigation(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 120,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _isFirstStep ? null : _goToPreviousStep,
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('Back'),
+              ),
+            ),
+          ),
+          Expanded(child: _buildStepDots(context)),
+          SizedBox(
+            width: 120,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _isLastStep
+                  ? FilledButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Done'),
+                    )
+                  : FilledButton.icon(
+                      onPressed: _goToNextStep,
+                      icon: const Icon(Icons.arrow_forward),
+                      label: const Text('Next'),
+                      iconAlignment: IconAlignment.end,
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // The dots double as navigation: clicking one jumps to that step.
+  Widget _buildStepDots(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var index = 0; index < _helpSteps.length; index++)
+          InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () => setState(() => _stepIndex = index),
+            child: Padding(
+              padding: const EdgeInsets.all(5),
+              child: Icon(
+                Icons.circle,
+                size: 10,
+                color: index == _stepIndex
+                    ? colors.primary
+                    : colors.outlineVariant,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _goToPreviousStep() => setState(() => _stepIndex--);
+
+  void _goToNextStep() => setState(() => _stepIndex++);
 }
 
-class _HelpSection {
-  const _HelpSection({
+class _HelpStepView extends StatelessWidget {
+  const _HelpStepView({super.key, required this.step});
+
+  final _HelpStep step;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final example = step.example;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(step.icon, color: theme.colorScheme.primary),
+            const SizedBox(width: 10),
+            Text(step.title, style: theme.textTheme.titleLarge),
+          ],
+        ),
+        if (example != null) ...[
+          const SizedBox(height: 24),
+          Center(child: example),
+        ],
+        const SizedBox(height: 24),
+        for (final point in step.points)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('•  '),
+                Expanded(child: Text(point, style: theme.textTheme.bodyLarge)),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _HelpStep {
+  const _HelpStep({
     required this.icon,
     required this.title,
     required this.points,
+    this.example,
   });
 
   final IconData icon;
   final String title;
   final List<String> points;
+
+  /// Picture of the part of the app this step is about; `null` for a text
+  /// only step.
+  final Widget? example;
 }
 
-const _helpSections = [
-  _HelpSection(
+const _helpSteps = [
+  _HelpStep(
+    icon: Icons.edit_outlined,
+    title: 'Change an adapter directly',
+    example: ChangeAdapterExample(),
+    points: ['Double-click a card to change its settings directly.'],
+  ),
+  _HelpStep(
     icon: Icons.lan_outlined,
     title: 'Adapters (left)',
+    example: AdapterColorsExample(),
     points: [
       'Every network adapter of this PC.',
       'Green card = connected, red card = not connected.',
-      'Double-click a card to change its settings directly.',
       'Use the refresh button to read the adapters again, e.g. after '
           'plugging in a cable. Reading takes a few seconds.',
     ],
   ),
-  _HelpSection(
+  _HelpStep(
     icon: Icons.bookmark_outline,
     title: 'Profiles (top right)',
+    example: ApplyProfileExample(),
     points: [
       'A profile is a saved set of settings that is not tied to an adapter: '
           'you choose the adapter when applying it.',
@@ -137,9 +241,10 @@ const _helpSections = [
           '10 seconds; the result shows under the profile.',
     ],
   ),
-  _HelpSection(
+  _HelpStep(
     icon: Icons.playlist_play,
     title: 'Presets (bottom right)',
+    example: PresetExample(),
     points: [
       'A preset links adapters to profiles. With one click on Apply, one or '
           'more adapters are set to the right profile and their ping targets '
@@ -149,9 +254,10 @@ const _helpSections = [
           'changing anything.',
     ],
   ),
-  _HelpSection(
+  _HelpStep(
     icon: Icons.swap_vert,
     title: 'Import and Export (top right)',
+    example: ImportExportExample(),
     points: [
       'Your changes are saved automatically; you never need to save.',
       'Export writes all profiles and presets to a file you choose, to share '
@@ -161,7 +267,7 @@ const _helpSections = [
           'local adapter to use instead while importing.',
     ],
   ),
-  _HelpSection(
+  _HelpStep(
     icon: Icons.lightbulb_outline,
     title: 'Good to know',
     points: [
