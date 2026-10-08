@@ -58,6 +58,15 @@ void main() {
     expect(result.renamedCount, 2);
   });
 
+  test('keeps the personal settings of the current library', () {
+    final result = merger.merge(
+      const NetworkProfileLibrary(helpWasShown: true),
+      NetworkProfileLibrary(profiles: [dhcpProfile('Lab')]),
+    );
+
+    expect(result.library.helpWasShown, isTrue);
+  });
+
   test('numbers further duplicates', () {
     final result = merger.merge(
       NetworkProfileLibrary(

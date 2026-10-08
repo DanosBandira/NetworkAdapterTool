@@ -170,6 +170,19 @@ void main() {
     expect(library.presets, isEmpty);
   });
 
+  test('stores helpWasShown only once it is true', () async {
+    await repository.saveLibrary(const NetworkProfileLibrary());
+    expect(await userDataFile.readAsString(), isNot(contains('helpWasShown')));
+    expect((await repository.loadLibrary()).helpWasShown, isFalse);
+
+    await repository.saveLibrary(
+      const NetworkProfileLibrary(helpWasShown: true),
+    );
+
+    expect(await userDataFile.readAsString(), contains('"helpWasShown": true'));
+    expect((await repository.loadLibrary()).helpWasShown, isTrue);
+  });
+
   group('backup', () {
     test('copies the stored file next to it with a timestamp', () async {
       await repository.saveLibrary(

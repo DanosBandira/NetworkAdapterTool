@@ -21,6 +21,7 @@ import '../../fakes/scripted_host_pinger.dart';
 void main() {
   late MainViewModel viewModel;
   late RecordingNetworkAdapterConfigurator configurator;
+  late InMemoryNetworkProfileRepository repository;
 
   setUp(() async {
     configurator = RecordingNetworkAdapterConfigurator();
@@ -39,30 +40,45 @@ void main() {
       configurator: configurator,
       reader: reader,
     );
+    repository = InMemoryNetworkProfileRepository(
+      storedProfiles: [
+        const NetworkProfile(
+          name: 'Machine',
+          addressingMode: AddressingMode.staticIp,
+          ipAddress: '192.168.0.10',
+          subnetMask: '255.255.255.0',
+        ),
+      ],
+      // Most tests are about the main window, not the first-start help.
+      helpWasShown: true,
+    );
     viewModel = MainViewModel(
       reader: reader,
-      repository: InMemoryNetworkProfileRepository(
-        storedProfiles: [
-          const NetworkProfile(
-            name: 'Machine',
-            addressingMode: AddressingMode.staticIp,
-            ipAddress: '192.168.0.10',
-            subnetMask: '255.255.255.0',
-          ),
-        ],
-      ),
+      repository: repository,
       applier: applier,
       presetApplier: NetworkPresetApplier(applier),
       pingTargetsChecker: PingTargetsChecker(ScriptedHostPinger()),
       libraryTransfer: InMemoryNetworkProfileLibraryTransfer(),
     );
-    await viewModel.initialize();
   });
 
-  Future<void> showApp(WidgetTester tester) async {
+  Future<void> initializeWithHelpShownBefore(bool helpWasShown) async {
+    repository.storedLibrary = repository.storedLibrary.copyWith(
+      helpWasShown: helpWasShown,
+    );
+    await viewModel.initialize();
+  }
+
+  Future<void> showApp(
+    WidgetTester tester, {
+    bool helpWasShownBefore = true,
+  }) async {
     tester.view.physicalSize = const Size(1100, 680);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+    await tester.runAsync(
+      () => initializeWithHelpShownBefore(helpWasShownBefore),
+    );
     await tester.pumpWidget(NetworkAdapterToolApp(mainViewModel: viewModel));
   }
 
@@ -124,6 +140,32 @@ void main() {
       );
       expect(button, findsOneWidget);
     }
+  });
+
+  testWidgets('opens the help by itself on the first start, only once', (
+    tester,
+  ) async {
+    await showApp(tester, helpWasShownBefore: false);
+    await tester.pumpAndSettle();
+
+    expect(find.text('How to use Network Adapter Tool'), findsOneWidget);
+    expect(repository.storedLibrary.helpWasShown, isTrue);
+
+    await tester.tap(find.byTooltip('Close help'));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(NetworkAdapterToolApp(mainViewModel: viewModel));
+    await tester.pumpAndSettle();
+
+    expect(find.text('How to use Network Adapter Tool'), findsNothing);
+  });
+
+  testWidgets('does not open the help when it was shown before', (
+    tester,
+  ) async {
+    await showApp(tester);
+    await tester.pumpAndSettle();
+
+    expect(find.text('How to use Network Adapter Tool'), findsNothing);
   });
 
   testWidgets('walks through the help steps and closes with Done', (

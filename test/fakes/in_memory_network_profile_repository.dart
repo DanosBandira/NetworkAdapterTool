@@ -9,11 +9,13 @@ class InMemoryNetworkProfileRepository implements NetworkProfileRepository {
   InMemoryNetworkProfileRepository({
     List<NetworkProfile> storedProfiles = const [],
     List<NetworkPreset> storedPresets = const [],
+    bool helpWasShown = false,
     this.loadError,
     this.saveError,
   }) : storedLibrary = NetworkProfileLibrary(
          profiles: List.of(storedProfiles),
          presets: List.of(storedPresets),
+         helpWasShown: helpWasShown,
        );
 
   NetworkProfileLibrary storedLibrary;

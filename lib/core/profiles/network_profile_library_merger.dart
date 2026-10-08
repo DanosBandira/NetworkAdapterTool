@@ -50,7 +50,8 @@ class NetworkProfileLibraryMerger {
     ].length;
 
     return LibraryMergeResult(
-      library: NetworkProfileLibrary(
+      // copyWith keeps the current personal settings (e.g. helpWasShown).
+      library: current.copyWith(
         profiles: [...current.profiles, ...importedProfiles],
         presets: [...current.presets, ...importedPresets],
       ),

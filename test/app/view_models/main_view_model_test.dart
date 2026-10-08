@@ -246,6 +246,73 @@ void main() {
     });
   });
 
+  group('help on first start', () {
+    test('is requested when the help was never shown', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      expect(viewModel.shouldShowHelpOnStart, isTrue);
+    });
+
+    test('is not requested again once marked as shown', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      await viewModel.markHelpAsShown();
+
+      expect(viewModel.shouldShowHelpOnStart, isFalse);
+      expect(repository.storedLibrary.helpWasShown, isTrue);
+      expect(repository.storedProfiles, [machineProfile, officeProfile]);
+    });
+
+    test('is not requested when it was shown in an earlier session', () async {
+      repository = InMemoryNetworkProfileRepository(helpWasShown: true);
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      expect(viewModel.shouldShowHelpOnStart, isFalse);
+    });
+
+    test('is not requested when the stored data failed to load', () async {
+      repository = InMemoryNetworkProfileRepository(
+        loadError: const NetworkProfileStorageException('corrupt file'),
+      );
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      expect(viewModel.shouldShowHelpOnStart, isFalse);
+    });
+
+    test('is not exported and survives a replacing import', () async {
+      repository = InMemoryNetworkProfileRepository(
+        storedProfiles: [officeProfile],
+        helpWasShown: true,
+      );
+      libraryTransfer.filesByPath['shared.json'] = const NetworkProfileLibrary(
+        profiles: [machineProfile],
+      );
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      await viewModel.exportUserData('export.json');
+      final libraryImport = await viewModel.prepareImport('shared.json');
+      await viewModel.completeImport(
+        libraryImport!,
+        mode: LibraryImportMode.replace,
+        newAdapterNamesByImportedName: const {},
+      );
+
+      expect(libraryTransfer.filesByPath['export.json']!.helpWasShown, isFalse);
+      expect(repository.storedProfiles, [machineProfile]);
+      expect(repository.storedLibrary.helpWasShown, isTrue);
+    });
+  });
+
   group('export and import user data', () {
     const sharedPreset = NetworkPreset(
       name: 'Line 1',

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -19,9 +21,45 @@ import 'network_preset_editor_view.dart';
 import 'network_profile_editor_view.dart';
 
 /// Main window: adapters on the left; profiles (top) and presets (bottom) on
-/// the right; the apply action and the status line at the bottom.
-class MainView extends StatelessWidget {
+/// the right; the apply action and the status line at the bottom. Opens the
+/// help by itself on the very first start.
+class MainView extends StatefulWidget {
   const MainView({super.key});
+
+  @override
+  State<MainView> createState() => _MainViewState();
+}
+
+class _MainViewState extends State<MainView> {
+  late final MainViewModel _viewModel;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewModel = context.read<MainViewModel>();
+    _viewModel.addListener(_showHelpOnFirstStart);
+    // The data may already have loaded before this view was built.
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _showHelpOnFirstStart(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _viewModel.removeListener(_showHelpOnFirstStart);
+    super.dispose();
+  }
+
+  // Runs whenever the view model changes; does something only once, after
+  // the stored data has loaded and says the help was never shown.
+  void _showHelpOnFirstStart() {
+    if (!mounted || !_viewModel.shouldShowHelpOnStart) return;
+    unawaited(_viewModel.markHelpAsShown());
+    // Not from inside the listener call: open after the current frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_showHelp(context));
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,10 +83,7 @@ class MainView extends StatelessWidget {
             label: const Text('Export'),
           ),
           TextButton.icon(
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => const HelpView(),
-            ),
+            onPressed: () => _showHelp(context),
             icon: const Icon(Icons.help_outline),
             label: const Text('Help'),
           ),
@@ -569,6 +604,10 @@ class _EmptyPanelText extends StatelessWidget {
       ),
     );
   }
+}
+
+Future<void> _showHelp(BuildContext context) {
+  return showDialog<void>(context: context, builder: (_) => const HelpView());
 }
 
 const _userDataFileTypes = [

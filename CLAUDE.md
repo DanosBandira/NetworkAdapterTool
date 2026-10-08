@@ -243,6 +243,12 @@ prefix length to a dotted subnet mask. The reader sits behind
   targets): pings all those profiles concurrently without applying anything.
   Results show under the profile cards and, grouped per profile, in the
   preset card.
+- `user_data.json` also holds `"helpWasShown": true` once the help opened
+  automatically on the first start (written only when true, read as false
+  when missing). Added without a format version bump on purpose: older app
+  versions ignore the key and at worst show the help once more, while a bump
+  would make them refuse the whole file. It is a personal setting: Export
+  writes it as false, Import (merge and replace) keeps the current value.
 - `user_data.json` is `{"formatVersion": 3, "profiles": [...], "presets":
   [...]}` (2 added `pingTargets`, 3 added `presets`; older files still load),
   written to a
@@ -347,6 +353,10 @@ prefix length to a dotted subnet mask. The reader sits behind
   `MainViewModel.switchSelectedAdapterToDhcp` and its tests remain so it can
   come back.
 - Profile editor: create, edit, delete profiles with inline validation.
+- On the first start (`helpWasShown` false after a successful load) the help
+  opens by itself: `MainView` listens to `MainViewModel.shouldShowHelpOnStart`
+  and calls `markHelpAsShown()`, which saves the flag right away (not when
+  the help closes), so quitting during the help does not bring it back.
 - Help (app bar, next to Import/Export) opens `HelpView`, a step-by-step
   dialog (Back/Next/Done, clickable dots, "Step x of 6"). Each step shows an
   example from `help_examples.dart` with an orange `HelpCallout` frame and

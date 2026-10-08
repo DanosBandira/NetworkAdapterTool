@@ -102,6 +102,7 @@ class JsonNetworkProfileRepository implements NetworkProfileRepository {
               in document['presets'] as List<Object?>? ?? const <Object?>[])
             NetworkPreset.fromJson(presetEntry as Map<String, Object?>),
         ],
+        helpWasShown: document['helpWasShown'] as bool? ?? false,
       );
     } on FormatException catch (error) {
       throw NetworkProfileStorageException(
@@ -133,6 +134,9 @@ class JsonNetworkProfileRepository implements NetworkProfileRepository {
       'formatVersion': _currentFormatVersion,
       'profiles': [for (final profile in library.profiles) profile.toJson()],
       'presets': [for (final preset in library.presets) preset.toJson()],
+      // Added without a format version bump: older app versions ignore the
+      // key, so at worst they show the help once more.
+      if (library.helpWasShown) 'helpWasShown': true,
     };
     // Indented so users can read or back up the file by hand.
     return const JsonEncoder.withIndent('  ').convert(document);

@@ -66,6 +66,9 @@ class MainViewModel extends ChangeNotifier {
 
   // Until adapters were read once, every preset adapter would look missing.
   bool _adaptersAreLoaded = false;
+
+  // Set before saving, so a slow or failing save never opens the help twice.
+  bool _helpShownThisSession = false;
   StatusMessage? _statusMessage;
   String _adapterSearchText = '';
   String _profileSearchText = '';
@@ -104,6 +107,12 @@ class MainViewModel extends ChangeNotifier {
   // Same guard as editing: never overwrite or export a library that failed
   // to load.
   bool get canTransferUserData => _libraryIsLoaded && !_isApplying;
+
+  /// True on the first start: the stored data says the help was never shown.
+  /// Stays false when the data failed to load, so a broken file does not
+  /// keep opening the help.
+  bool get shouldShowHelpOnStart =>
+      _libraryIsLoaded && !_library.helpWasShown && !_helpShownThisSession;
 
   /// Adapters of [preset] that do not exist on this PC (e.g. after loading a
   /// file from another PC). Empty until adapters have been read once.
@@ -403,11 +412,24 @@ class MainViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Records that the help was opened automatically, so later starts skip
+  /// it. Saved right away rather than when the help closes, so quitting
+  /// during the help does not bring it back.
+  Future<void> markHelpAsShown() async {
+    _helpShownThisSession = true;
+    notifyListeners();
+    await _storeLibrary(_library.copyWith(helpWasShown: true));
+  }
+
   /// Writes all profiles and presets to [filePath] for sharing.
   Future<void> exportUserData(String filePath) async {
     if (!canTransferUserData) return;
     try {
-      await _libraryTransfer.exportLibrary(_library, filePath);
+      // Personal settings stay out of a file meant for other users.
+      await _libraryTransfer.exportLibrary(
+        _library.copyWith(helpWasShown: false),
+        filePath,
+      );
       _statusMessage = StatusMessage.success(
         'Exported ${_describeCounts(_library)} to $filePath.',
       );
@@ -688,7 +710,10 @@ class MainViewModel extends ChangeNotifier {
       );
       return;
     }
-    final isStored = await _storeLibrary(importedLibrary);
+    // Replacing takes over profiles and presets, not personal settings.
+    final isStored = await _storeLibrary(
+      importedLibrary.copyWith(helpWasShown: _library.helpWasShown),
+    );
     if (!isStored) return;
     _forgetStateOfReplacedLibrary();
     final backupNote = backupPath == null ? '' : ' Backup: $backupPath';
