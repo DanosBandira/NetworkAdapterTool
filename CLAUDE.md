@@ -404,21 +404,54 @@ Not planned yet; pick up only when the user asks.
 
 ### Linux version
 
-UI, view models, validation, presets and storage logic are platform
-independent; only the contract implementations are Windows specific. A Linux
-build would need:
+UI, view models, validation, presets, appliers, `PingTargetsChecker`,
+`ProcessCommandRunner`, the library transfer and both packages (`provider`,
+`file_selector`) are platform independent (checked 2026-10-09, roughly
+80–85% of the code). Only the contract implementations and a few spots below
+are Windows specific. A Linux build would need:
 
 | Contract | Windows (now) | Linux |
 |---|---|---|
-| `NetworkAdapterReader` | PowerShell `Get-Net*` | `ip -j addr` / `nmcli` |
+| `NetworkAdapterReader` | PowerShell `Get-Net*` | `ip -j addr` + `ip -j route` (JSON) or `nmcli -t` |
 | `NetworkAdapterConfigurator` | `netsh` | `nmcli` (NetworkManager) |
-| `HostPinger` | `ping.exe`, reply = `TTL=` | `ping -c 1 -W 1`, own output parsing |
-| Storage folder | `%APPDATA%\NetworkAdapterTool` | `~/.config/network-adapter-tool` |
-| Elevation | `requireAdministrator` manifest | `pkexec` / polkit |
+| `HostPinger` | `ping.exe`, reply = `TTL=` | `ping -c 1 -W 1`; exit code 0 only on a real reply |
+| Storage folder | `%APPDATA%\NetworkAdapterTool` | `$XDG_CONFIG_HOME` or `~/.config/network-adapter-tool` |
+| Elevation | `requireAdministrator` manifest | polkit (`nmcli` often needs no root for a local user), else `pkexec` |
 
-Re-verify the Windows-specific findings (disconnected DHCP adapters, netsh
-exit codes) for Linux; build on Linux (WSL or CI). `file_selector` already
-supports Linux.
+Configurator: `nmcli`, not `ip`. `ip` only changes the live kernel state (lost
+on reboot or replug), does no DHCP and no DNS, and NetworkManager overwrites
+it when running. `nmcli` covers static/DHCP, gateway and DNS in one tool and
+persists, like netsh:
+
+```
+nmcli connection modify <connection> ipv4.method manual ipv4.addresses <ip>/<prefix> ipv4.gateway <gw> ipv4.dns "<dns1> <dns2>"
+nmcli connection modify <connection> ipv4.method auto ipv4.addresses "" ipv4.gateway "" ipv4.dns ""
+nmcli connection up <connection>
+```
+
+`nmcli` works on connections, not devices: find the connection for the
+adapter (`nmcli -t -f NAME,DEVICE connection show`) and create one when none
+exists. Without a running NetworkManager (servers, minimal installs) show a
+clear message instead of failing silently.
+
+Other changes:
+
+- `main.dart` picks the implementations per `Platform.isLinux` /
+  `Platform.isWindows`.
+- `JsonNetworkProfileRepository.inRoamingAppData` throws without `APPDATA`
+  and joins the path with `\\`; needs a per-platform storage folder.
+- UI texts mention Windows, `%APPDATA%` and the UAC prompt
+  (`main_view_model.dart` outcome messages, `help_view.dart` step 6).
+- `ProfileNeedsConnectedAdapter` is a Windows quirk; under NetworkManager
+  DHCP-to-static on a disconnected adapter probably works, so make that check
+  per platform (re-verify first).
+- Adapter names compare case-insensitively (`_isPresentAdapter`); Linux
+  names are case-sensitive.
+- Add the runner with `flutter create --platforms=linux .`; build on Linux
+  (WSL or CI), not from Windows.
+
+Re-verify the Windows-specific findings (disconnected DHCP adapters, exit
+codes, apply-then-verify retries) for `nmcli`.
 
 ### Start with Windows
 
