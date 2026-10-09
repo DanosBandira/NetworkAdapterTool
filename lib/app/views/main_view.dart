@@ -292,6 +292,7 @@ class _ProfileTile extends StatelessWidget {
     final viewModel = context.watch<MainViewModel>();
     final theme = Theme.of(context);
     final pingStatuses = viewModel.pingStatusesFor(profile.name);
+    final commandStatuses = viewModel.commandStatusesFor(profile.name);
     return Card(
       elevation: 0,
       color: CardColors.profile(theme.brightness, isSelected: isSelected),
@@ -306,6 +307,8 @@ class _ProfileTile extends StatelessWidget {
         children: [
           _buildHeader(context, viewModel),
           if (pingStatuses != null) _PingResults(statuses: pingStatuses),
+          if (commandStatuses != null)
+            _CommandResults(statuses: commandStatuses),
         ],
       ),
     );
@@ -338,6 +341,10 @@ class _ProfileTile extends StatelessWidget {
                     )
                   : const Text('Ping'),
             ),
+          if (profile.commands.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            _buildRunOrStopButton(viewModel),
+          ],
           IconButton(
             tooltip: 'Edit',
             icon: const Icon(Icons.edit_outlined),
@@ -357,16 +364,39 @@ class _ProfileTile extends StatelessWidget {
     );
   }
 
+  // While commands run the button stops them, so a program that never exits
+  // can always be ended from the app.
+  Widget _buildRunOrStopButton(MainViewModel viewModel) {
+    if (viewModel.isRunningCommands(profile.name)) {
+      return OutlinedButton.icon(
+        onPressed: viewModel.canStopCommands(profile.name)
+            ? () => viewModel.stopCommandsOf(profile.name)
+            : null,
+        icon: const Icon(Icons.stop, size: 16),
+        label: const Text('Stop'),
+      );
+    }
+    return OutlinedButton(
+      onPressed: viewModel.canRunCommands(profile)
+          ? () => viewModel.runCommandsOf(profile)
+          : null,
+      child: const Text('Run'),
+    );
+  }
+
   String _describeProfile(NetworkProfile profile) {
     final addressing = profile.addressingMode == AddressingMode.dhcp
         ? 'DHCP'
         : '${profile.ipAddress} / ${profile.subnetMask}';
-    final targetCount = profile.pingTargets.length;
-    return switch (targetCount) {
-      0 => addressing,
-      1 => '$addressing · 1 ping target',
-      _ => '$addressing · $targetCount ping targets',
-    };
+    String counted(int count, String noun) =>
+        '$count $noun${count == 1 ? '' : 's'}';
+    return [
+      addressing,
+      if (profile.pingTargets.isNotEmpty)
+        counted(profile.pingTargets.length, 'ping target'),
+      if (profile.commands.isNotEmpty)
+        counted(profile.commands.length, 'command'),
+    ].join(' · ');
   }
 }
 
@@ -438,6 +468,145 @@ class _PingResults extends StatelessWidget {
   }
 }
 
+/// State per command under a profile card: an indicator, the command, its
+/// running time or result, and a button to read the full output.
+class _CommandResults extends StatelessWidget {
+  const _CommandResults({required this.statuses});
+
+  static const _succeededColor = Color(0xFF2E7D32);
+
+  final List<CommandStatus> statuses;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+      child: Column(
+        children: [
+          for (final status in statuses)
+            SizedBox(
+              height: 28,
+              child: Row(
+                children: [
+                  _buildStateIndicator(status.state, theme),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      status.command.displayName,
+                      style: theme.textTheme.bodySmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  _buildResultText(status, theme),
+                  if (status.output.trim().isNotEmpty)
+                    IconButton(
+                      tooltip: 'Show output',
+                      iconSize: 16,
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.article_outlined),
+                      onPressed: () => _showOutput(context, status),
+                    )
+                  else
+                    const SizedBox(width: 8),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultText(CommandStatus status, ThemeData theme) {
+    final style = theme.textTheme.bodySmall?.copyWith(
+      color: _resultColor(status.state, theme),
+    );
+    final startedAt = status.startedAt;
+    if (status.state == CommandState.running && startedAt != null) {
+      return _ElapsedTimeText(startedAt: startedAt, style: style);
+    }
+    return Text(status.resultText, style: style);
+  }
+
+  Widget _buildStateIndicator(CommandState state, ThemeData theme) {
+    return switch (state) {
+      CommandState.running => const SizedBox.square(
+        dimension: 10,
+        child: CircularProgressIndicator(strokeWidth: 1.5),
+      ),
+      CommandState.waiting || CommandState.skipped => Icon(
+        Icons.circle_outlined,
+        size: 10,
+        color: theme.colorScheme.outline,
+      ),
+      _ => Icon(Icons.circle, size: 10, color: _resultColor(state, theme)),
+    };
+  }
+
+  Color _resultColor(CommandState state, ThemeData theme) => switch (state) {
+    CommandState.succeeded => _succeededColor,
+    CommandState.failed || CommandState.stopped => theme.colorScheme.error,
+    _ => theme.colorScheme.outline,
+  };
+
+  Future<void> _showOutput(BuildContext context, CommandStatus status) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Output of ${status.command.displayName}'),
+        content: SizedBox(
+          width: 640,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              status.output,
+              style: const TextStyle(fontFamily: 'Consolas', fontSize: 12),
+            ),
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Running · 12 s", updated every second while a command runs.
+class _ElapsedTimeText extends StatefulWidget {
+  const _ElapsedTimeText({required this.startedAt, this.style});
+
+  final DateTime startedAt;
+  final TextStyle? style;
+
+  @override
+  State<_ElapsedTimeText> createState() => _ElapsedTimeTextState();
+}
+
+class _ElapsedTimeTextState extends State<_ElapsedTimeText> {
+  late final Timer _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final elapsed = DateTime.now().difference(widget.startedAt);
+    return Text('Running · ${describeDuration(elapsed)}', style: widget.style);
+  }
+}
+
 class _ActionBar extends StatelessWidget {
   const _ActionBar();
 
@@ -500,7 +669,8 @@ class _StatusLine extends StatelessWidget {
           child: SelectableText(
             message.text,
             style: TextStyle(color: color),
-            maxLines: 3,
+            // Room for the last lines a command wrote.
+            maxLines: 5,
           ),
         ),
         if (message.kind != StatusKind.progress)
@@ -681,7 +851,10 @@ Future<void> _openProfileEditor(
         originalProfile: profileToEdit,
         otherProfileNames: mainViewModel.profileNamesOtherThan(profileToEdit),
       ),
-      child: const NetworkProfileEditorView(),
+      child: NetworkProfileEditorView(
+        pluginFolderPath: mainViewModel.pluginFolderPath,
+        onOpenPluginFolder: mainViewModel.openPluginFolder,
+      ),
     ),
   );
   if (savedProfile == null) return;

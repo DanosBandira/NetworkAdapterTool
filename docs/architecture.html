@@ -123,6 +123,8 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
     <div class="card"><div class="name">ApplyProfileOutcome</div><div class="role">Applied · Invalid · NeedsConnectedAdapter · RejectedBySystem · NotActive · NotVerified</div></div>
     <div class="card"><div class="name">PingTargetsChecker</div><div class="role">Pingt alle doelen tot antwoord of 10 s</div></div>
     <div class="card"><div class="name">NetworkPresetApplier</div><div class="role">Past preset-regels één voor één toe</div></div>
+    <div class="card"><div class="name">ProfileCommand&shy;Runner</div><div class="role">Start een commando per bestandstype, stopbaar, geen tijdslimiet</div></div>
+    <div class="card"><div class="name">PluginPathResolver</div><div class="role">Bestandsnaam → plugins-map naast de exe, absoluut pad blijft</div></div>
   </div>
 </section>
 <div class="arrow">↓ hangt af van</div>
@@ -135,6 +137,8 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
     <div class="card"><div class="name">NetworkProfileRepository</div><div class="role">Profielen laden en opslaan</div></div>
     <div class="card"><div class="name">CommandRunner</div><div class="role">Proces starten</div></div>
     <div class="card"><div class="name">HostPinger</div><div class="role">Eén ping sturen</div></div>
+    <div class="card"><div class="name">ProgramLauncher</div><div class="role">Programma starten, wachten of stoppen</div></div>
+    <div class="card"><div class="name">FolderOpener</div><div class="role">Map tonen</div></div>
   </div>
 </section>
 <div class="arrow">↓ geïmplementeerd door</div>
@@ -147,6 +151,8 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
     <div class="card"><div class="name">JsonNetwork&shy;ProfileRepository</div><div class="role">Versie-JSON, atomair schrijven</div></div>
     <div class="card"><div class="name">ProcessCommandRunner</div><div class="role">Process.run met argumentlijst</div></div>
     <div class="card"><div class="name">PingExeHostPinger</div><div class="role">ping.exe, antwoord = TTL= in uitvoer</div></div>
+    <div class="card"><div class="name">ProcessProgram&shy;Launcher</div><div class="role">Process.start, uitvoer bewaren, stoppen met taskkill /T</div></div>
+    <div class="card"><div class="name">ExplorerFolderOpener</div><div class="role">Map aanmaken en openen in Verkenner</div></div>
     <div class="card"><div class="name">NetworkProfileValidator</div><div class="role">Fouten per veld, geen contract</div></div>
     <div class="card"><div class="name">NetworkPresetValidator</div><div class="role">Naam, regels, bestaande profielen</div></div>
   </div>
@@ -161,6 +167,7 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
     <div class="card"><div class="name">AddressingMode</div><div class="role">dhcp · staticIp</div></div>
     <div class="card"><div class="name">Ipv4Address</div><div class="role">Parsen en subnet-rekenwerk</div></div>
     <div class="card"><div class="name">PingTarget</div><div class="role">IP + optionele naam</div></div>
+    <div class="card"><div class="name">ProfileCommand</div><div class="role">Pad, argumenten, naam, na toepassen uitvoeren</div></div>
     <div class="card"><div class="name">NetworkPreset</div><div class="role">Naam + regels adapter ← profiel</div></div>
     <div class="card"><div class="name">NetworkProfile&shy;Library</div><div class="role">Profielen + presets, samen opgeslagen</div></div>
   </div>
@@ -174,11 +181,12 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
     <div class="card"><div class="name">netsh.exe</div><div class="role">interface ipv4 set/add</div></div>
     <div class="card"><div class="name">ping.exe</div><div class="role">-4 -n 1 -w &lt;ms&gt;</div></div>
     <div class="card"><div class="name">user_data.json</div><div class="role">%APPDATA%\NetworkAdapterTool</div></div>
+    <div class="card"><div class="name">plugins\</div><div class="role">Naast de exe; .exe en .bat/.cmd direct, .ps1 via powershell.exe -File</div></div>
   </div>
 </section>
 
 <h2>Afhankelijkheden</h2>
-<p class="subtitle">Wie gebruikt wie, en welke implementatie hoort bij welk contract. De modellen worden door alle onderdelen gebruikt en zijn weggelaten. De ping-keten staat er nog niet in: View models → PingTargetsChecker → HostPinger ⇠ PingExeHostPinger → CommandRunner → ping.exe.</p>
+<p class="subtitle">Wie gebruikt wie, en welke implementatie hoort bij welk contract. De modellen worden door alle onderdelen gebruikt en zijn weggelaten. De ping- en commando-ketens staan er nog niet in: View models → PingTargetsChecker → HostPinger ⇠ PingExeHostPinger → CommandRunner → ping.exe, en View models → ProfileCommandRunner → PluginPathResolver + ProgramLauncher ⇠ ProcessProgramLauncher → het programma.</p>
 <svg class="graph" viewBox="0 0 680 740" role="img">
 <title>Afhankelijkheden tussen de onderdelen</title>
 <desc>Tray en view models gebruiken de applier en de contracten; de applier gebruikt validator, configurator en reader; implementaties implementeren de contracten en gebruiken CommandRunner, die netsh.exe en powershell.exe start.</desc>

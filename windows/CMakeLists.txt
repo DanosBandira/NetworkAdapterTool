@@ -117,3 +117,14 @@ install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}
   DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
+
+# Default plugins (scripts and programs for profile commands) live in the
+# repository's plugins folder and are copied next to the executable, where
+# the app looks up command files given without a folder. Files are only added
+# or overwritten, never removed, so plugins the user put into the build folder
+# stay. A config.json is local (it may hold settings or passwords) and is
+# never copied, matching .gitignore.
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../plugins/"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/plugins"
+  COMPONENT Runtime
+  PATTERN "config.json" EXCLUDE)

@@ -30,9 +30,10 @@ class JsonNetworkProfileRepository implements NetworkProfileRepository {
   // 1: initial format.
   // 2: profiles may contain "pingTargets".
   // 3: top-level "presets" list.
+  // 4: profiles may contain "commands".
   // Older files load unchanged; each bump stops an older app from saving and
   // dropping data it does not know.
-  static const _currentFormatVersion = 3;
+  static const _currentFormatVersion = 4;
 
   final File _userDataFile;
 

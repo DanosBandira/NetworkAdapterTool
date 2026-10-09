@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/commands/profile_command_runner.dart';
+import '../../core/contracts/folder_opener.dart';
 import '../../core/contracts/network_adapter_reader.dart';
 import '../../core/contracts/network_profile_library_transfer.dart';
 import '../../core/contracts/network_profile_repository.dart';
@@ -9,6 +11,7 @@ import '../../core/models/network_preset.dart';
 import '../../core/models/network_profile.dart';
 import '../../core/models/network_profile_library.dart';
 import '../../core/models/ping_target.dart';
+import '../../core/models/profile_command.dart';
 import '../../core/network_preset_applier.dart';
 import '../../core/network_profile_applier.dart';
 import '../../core/profiles/network_profile_library_merger.dart';
@@ -16,7 +19,8 @@ import '../../core/reachability/ping_targets_checker.dart';
 import 'network_adapter_view_model.dart';
 
 /// State and commands of the main window: the adapter list, the profile and
-/// preset lists, applying them to adapters and pinging profile targets.
+/// preset lists, applying them to adapters, pinging profile targets and
+/// running profile commands.
 ///
 /// Holds no network logic itself; everything goes through the injected core
 /// components, so it can be tested with fakes.
@@ -28,6 +32,8 @@ class MainViewModel extends ChangeNotifier {
     required this._presetApplier,
     required this._pingTargetsChecker,
     required this._libraryTransfer,
+    required this._profileCommandRunner,
+    required this._folderOpener,
     this._libraryMerger = const NetworkProfileLibraryMerger(),
   });
 
@@ -46,6 +52,8 @@ class MainViewModel extends ChangeNotifier {
   final NetworkPresetApplier _presetApplier;
   final PingTargetsChecker _pingTargetsChecker;
   final NetworkProfileLibraryTransfer _libraryTransfer;
+  final ProfileCommandRunner _profileCommandRunner;
+  final FolderOpener _folderOpener;
   final NetworkProfileLibraryMerger _libraryMerger;
 
   // Ping results stay visible under their profile until the next ping, an
@@ -53,6 +61,13 @@ class MainViewModel extends ChangeNotifier {
   final Map<String, List<PingTargetStatus>> _pingStatusesByProfileName = {};
   final Set<String> _profileNamesBeingPinged = {};
   final Map<String, List<PresetLineStatus>> _lineStatusesByPresetName = {};
+
+  // Command results behave like ping results. A profile runs its commands
+  // one at a time, so it has at most one active run to stop.
+  final Map<String, List<CommandStatus>> _commandStatusesByProfileName = {};
+  final Map<String, ProfileCommandRun> _activeCommandRunByProfileName = {};
+  final Set<String> _profileNamesRunningCommands = {};
+  final Set<String> _profileNamesStoppingCommands = {};
   bool _isDisposed = false;
 
   List<NetworkAdapterViewModel> _adapters = [];
@@ -140,6 +155,25 @@ class MainViewModel extends ChangeNotifier {
 
   bool canPingProfile(NetworkProfile profile) =>
       profile.pingTargets.isNotEmpty && !isPinging(profile.name);
+
+  /// `null` when the profile's commands have not run yet.
+  List<CommandStatus>? commandStatusesFor(String profileName) {
+    final statuses = _commandStatusesByProfileName[profileName];
+    return statuses == null ? null : List.unmodifiable(statuses);
+  }
+
+  bool isRunningCommands(String profileName) =>
+      _profileNamesRunningCommands.contains(profileName);
+
+  bool canRunCommands(NetworkProfile profile) =>
+      profile.commands.isNotEmpty && !isRunningCommands(profile.name);
+
+  bool canStopCommands(String profileName) =>
+      isRunningCommands(profileName) &&
+      !_profileNamesStoppingCommands.contains(profileName);
+
+  /// Where a command path without a folder (e.g. `tool.exe`) is looked up.
+  String get pluginFolderPath => _profileCommandRunner.pluginFolderPath;
 
   /// `null` when the preset has not been applied yet.
   List<PresetLineStatus>? lineStatusesFor(String presetName) {
@@ -285,6 +319,11 @@ class MainViewModel extends ChangeNotifier {
     await Future.wait([
       for (final profile in appliedProfiles) pingTargetsOf(profile),
     ]);
+    // A profile used for two adapters runs its commands once; commands do
+    // not know about adapters.
+    for (final profile in {...appliedProfiles}) {
+      await _runCommands(profile, profile.commandsToRunAfterApply);
+    }
   }
 
   /// Pings the targets of every profile in [preset] at the same time, without
@@ -308,6 +347,30 @@ class MainViewModel extends ChangeNotifier {
     }
     _profileNamesBeingPinged.remove(profile.name);
     _notifyListenersUnlessDisposed();
+  }
+
+  /// Runs every command of [profile] one after another, including those not
+  /// marked to run after applying. A failing command does not stop the rest.
+  Future<void> runCommandsOf(NetworkProfile profile) =>
+      _runCommands(profile, profile.commands);
+
+  /// Stops the running command of [profileName] and skips the ones after it.
+  Future<void> stopCommandsOf(String profileName) async {
+    if (!canStopCommands(profileName)) return;
+    _profileNamesStoppingCommands.add(profileName);
+    notifyListeners();
+    await _activeCommandRunByProfileName[profileName]?.stop();
+  }
+
+  Future<void> openPluginFolder() async {
+    try {
+      await _folderOpener.openFolder(pluginFolderPath);
+    } on FolderOpenException catch (error) {
+      _statusMessage = StatusMessage.error(
+        'Could not open the plugin folder: ${error.reason}',
+      );
+      notifyListeners();
+    }
   }
 
   /// Names the editor must not reuse; excludes the profile being edited so
@@ -347,6 +410,7 @@ class MainViewModel extends ChangeNotifier {
       _selectedProfileName = savedProfile.name;
       // Results of the old targets no longer describe the edited profile.
       _pingStatusesByProfileName.remove(originalName);
+      _commandStatusesByProfileName.remove(originalName);
     }
     notifyListeners();
   }
@@ -374,6 +438,7 @@ class MainViewModel extends ChangeNotifier {
     );
     if (isStored) {
       _pingStatusesByProfileName.remove(profileToDelete.name);
+      _commandStatusesByProfileName.remove(profileToDelete.name);
       if (_selectedProfileName == profileToDelete.name) {
         _selectedProfileName = null;
       }
@@ -542,8 +607,97 @@ class MainViewModel extends ChangeNotifier {
     notifyListeners();
 
     // Adapter actions are already enabled again here; the returned future
-    // only completes after pinging so callers (and tests) can await it.
-    if (outcome is ProfileApplied) await pingTargetsOf(profile);
+    // only completes after pinging and running commands so callers (and
+    // tests) can await it. Commands start after pinging, because a command
+    // like mapping a share needs the link, ARP and devices the ping waits
+    // for.
+    if (outcome is! ProfileApplied) return;
+    await pingTargetsOf(profile);
+    await _runCommands(profile, profile.commandsToRunAfterApply);
+  }
+
+  Future<void> _runCommands(
+    NetworkProfile profile,
+    List<ProfileCommand> commands,
+  ) async {
+    if (commands.isEmpty || isRunningCommands(profile.name)) return;
+    _startRunningCommands(profile.name, commands);
+    for (final (index, command) in commands.indexed) {
+      if (_profileNamesStoppingCommands.contains(profile.name)) break;
+      await _runCommand(profile.name, index, command);
+    }
+    _finishRunningCommands(profile.name);
+  }
+
+  void _startRunningCommands(
+    String profileName,
+    List<ProfileCommand> commands,
+  ) {
+    _profileNamesRunningCommands.add(profileName);
+    _commandStatusesByProfileName[profileName] = [
+      for (final command in commands)
+        CommandStatus(command, CommandState.waiting),
+    ];
+    _notifyListenersUnlessDisposed();
+  }
+
+  Future<void> _runCommand(
+    String profileName,
+    int index,
+    ProfileCommand command,
+  ) async {
+    _recordCommandStatus(
+      profileName,
+      index,
+      CommandStatus(command, CommandState.running, startedAt: DateTime.now()),
+    );
+    _statusMessage = StatusMessage.progress(
+      'Running "${command.displayName}"…',
+    );
+    _notifyListenersUnlessDisposed();
+
+    final run = _profileCommandRunner.start(command);
+    _activeCommandRunByProfileName[profileName] = run;
+    final outcome = await run.outcome;
+    _activeCommandRunByProfileName.remove(profileName);
+
+    _recordCommandStatus(
+      profileName,
+      index,
+      CommandStatus.ended(command, outcome),
+    );
+    _statusMessage = _describeCommandOutcome(command, outcome);
+    _notifyListenersUnlessDisposed();
+  }
+
+  void _recordCommandStatus(
+    String profileName,
+    int index,
+    CommandStatus status,
+  ) {
+    final statuses = _commandStatusesByProfileName[profileName];
+    // The profile may have been edited or deleted while its commands ran.
+    if (statuses == null || index >= statuses.length) return;
+    _commandStatusesByProfileName[profileName] = [
+      for (final (statusIndex, existingStatus) in statuses.indexed)
+        statusIndex == index ? status : existingStatus,
+    ];
+  }
+
+  // Commands after a stopped one never started.
+  void _finishRunningCommands(String profileName) {
+    final statuses = _commandStatusesByProfileName[profileName];
+    if (statuses != null) {
+      _commandStatusesByProfileName[profileName] = [
+        for (final status in statuses)
+          status.state == CommandState.waiting
+              ? CommandStatus(status.command, CommandState.skipped)
+              : status,
+      ];
+    }
+    _profileNamesRunningCommands.remove(profileName);
+    _profileNamesStoppingCommands.remove(profileName);
+    _notifyListenersUnlessDisposed();
   }
 
   void _startApplyingPreset(NetworkPreset preset) {
@@ -630,7 +784,8 @@ class MainViewModel extends ChangeNotifier {
     _notifyListenersUnlessDisposed();
   }
 
-  // Pinging runs up to 10 seconds and may outlive the window.
+  // Pinging runs up to 10 seconds and commands run without a time limit;
+  // both may outlive the window.
   void _notifyListenersUnlessDisposed() {
     if (!_isDisposed) notifyListeners();
   }
@@ -680,6 +835,58 @@ class MainViewModel extends ChangeNotifier {
     };
   }
 
+  StatusMessage _describeCommandOutcome(
+    ProfileCommand command,
+    ProfileCommandOutcome outcome,
+  ) {
+    final name = '"${command.displayName}"';
+    return switch (outcome) {
+      CommandFinished(:final exitCode, :final output, :final duration) =>
+        outcome.isSuccess
+            ? StatusMessage.success(
+                _withOutput(
+                  '$name finished in ${describeDuration(duration)}.',
+                  output,
+                ),
+              )
+            : StatusMessage.error(
+                _withOutput(
+                  '$name failed with exit code $exitCode after '
+                  '${describeDuration(duration)}.',
+                  output,
+                ),
+              ),
+      CommandStopped(:final output, :final duration) => StatusMessage.error(
+        _withOutput(
+          '$name was stopped after ${describeDuration(duration)}.',
+          output,
+        ),
+      ),
+      CommandFileNotFound(:final resolvedPath) => StatusMessage.error(
+        '$name: $resolvedPath does not exist. Put the file in the plugin '
+        'folder or enter its full path.',
+      ),
+      CommandNotStarted(:final reason) => StatusMessage.error(
+        '$name could not start: $reason',
+      ),
+    };
+  }
+
+  // The last lines usually explain the result; the full output is available
+  // under the profile card.
+  String _withOutput(String summary, String output) {
+    const shownLineCount = 4;
+    final lines = [
+      for (final line in output.split('\n'))
+        if (line.trim().isNotEmpty) line.trimRight(),
+    ];
+    if (lines.isEmpty) return summary;
+    final lastLines = lines.skip(
+      lines.length > shownLineCount ? lines.length - shownLineCount : 0,
+    );
+    return '$summary\n${lastLines.join('\n')}';
+  }
+
   Future<void> _mergeImportedLibrary(
     NetworkProfileLibrary importedLibrary,
     String filePath,
@@ -725,6 +932,7 @@ class MainViewModel extends ChangeNotifier {
 
   void _forgetStateOfReplacedLibrary() {
     _pingStatusesByProfileName.clear();
+    _commandStatusesByProfileName.clear();
     _lineStatusesByPresetName.clear();
     if (_profileNamed(_selectedProfileName) == null) {
       _selectedProfileName = null;
@@ -784,6 +992,65 @@ class PingTargetStatus {
   };
 }
 
+enum CommandState { waiting, running, succeeded, failed, stopped, skipped }
+
+/// State of one command, shown under its profile card.
+class CommandStatus {
+  const CommandStatus(this.command, this.state, {this.startedAt, this.outcome});
+
+  CommandStatus.ended(this.command, ProfileCommandOutcome this.outcome)
+    : state = switch (outcome) {
+        CommandFinished(isSuccess: true) => CommandState.succeeded,
+        CommandStopped() => CommandState.stopped,
+        _ => CommandState.failed,
+      },
+      startedAt = null;
+
+  final ProfileCommand command;
+  final CommandState state;
+
+  /// Set while running, so the view can show the elapsed time.
+  final DateTime? startedAt;
+
+  /// Set once the command has ended.
+  final ProfileCommandOutcome? outcome;
+
+  /// Everything the program wrote; empty when it wrote nothing or did not
+  /// start.
+  String get output => switch (outcome) {
+    CommandFinished(:final output) || CommandStopped(:final output) => output,
+    _ => '',
+  };
+
+  /// Short result for the profile card; while running the view shows the
+  /// elapsed time instead.
+  String get resultText => switch (outcome) {
+    null => switch (state) {
+      CommandState.waiting => 'Waiting…',
+      CommandState.skipped => 'Not run',
+      _ => 'Running…',
+    },
+    CommandFinished(:final exitCode, :final duration, :final isSuccess) =>
+      isSuccess
+          ? 'Done · ${describeDuration(duration)}'
+          : 'Exit code $exitCode · ${describeDuration(duration)}',
+    CommandStopped(:final duration) =>
+      'Stopped · ${describeDuration(duration)}',
+    CommandFileNotFound() => 'File not found',
+    CommandNotStarted() => 'Could not start',
+  };
+}
+
+/// "0.4 s", "12 s" or "3:05", for command running times.
+String describeDuration(Duration duration) {
+  if (duration < const Duration(seconds: 10)) {
+    return '${(duration.inMilliseconds / 1000).toStringAsFixed(1)} s';
+  }
+  if (duration < const Duration(minutes: 1)) return '${duration.inSeconds} s';
+  final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
+  return '${duration.inMinutes}:$seconds';
+}
+
 enum PresetLineState { pending, applied, failed }
 
 /// Result of one preset line, shown under its preset card.
@@ -813,6 +1080,13 @@ class LibraryImport {
 
   /// Adapters used by the file's presets that this PC does not have.
   final List<String> unknownAdapterNames;
+
+  /// Every command in the file with the profile it belongs to. They run with
+  /// administrator rights, so the user is warned before importing.
+  List<(String profileName, ProfileCommand command)> get commands => [
+    for (final profile in library.profiles)
+      for (final command in profile.commands) (profile.name, command),
+  ];
 }
 
 enum StatusKind { progress, success, error }

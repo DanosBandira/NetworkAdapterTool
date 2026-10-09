@@ -44,6 +44,7 @@ lib/
 │   │   ├── network_adapter.dart
 │   │   ├── ipv4_address.dart                  (parsing + subnet arithmetic)
 │   │   ├── ping_target.dart                   (IP + optional name)
+│   │   ├── profile_command.dart               (path + arguments + runAfterApply)
 │   │   ├── network_preset.dart                (name + adapter→profile lines)
 │   │   ├── network_profile_library.dart       (profiles + presets, stored together)
 │   │   └── addressing_mode.dart               (dhcp | staticIp)
@@ -53,12 +54,20 @@ lib/
 │   │   ├── network_profile_repository.dart
 │   │   ├── network_profile_library_transfer.dart   (load/save to a chosen file)
 │   │   ├── host_pinger.dart
-│   │   └── command_runner.dart
+│   │   ├── command_runner.dart
+│   │   ├── program_launcher.dart              (start, wait for or stop a user program)
+│   │   └── folder_opener.dart
 │   ├── adapters/
 │   │   ├── powershell_network_adapter_reader.dart
 │   │   ├── netsh_network_adapter_configurator.dart
 │   │   ├── ping_exe_host_pinger.dart
-│   │   └── process_command_runner.dart
+│   │   ├── process_command_runner.dart
+│   │   ├── process_program_launcher.dart
+│   │   └── explorer_folder_opener.dart
+│   ├── commands/
+│   │   ├── command_line_arguments.dart        (arguments text ↔ list, quotes group)
+│   │   ├── plugin_path_resolver.dart          (bare name → plugins folder next to exe)
+│   │   └── profile_command_runner.dart        (start per file type, stoppable)
 │   ├── reachability/
 │   │   └── ping_targets_checker.dart
 │   ├── profiles/
@@ -92,6 +101,7 @@ test/
 ├── core/ · app/                               (mirror lib/)
 └── fakes/                                     (fake reader/configurator/runner/repository)
 docs/architecture.html                         (layers + dependency graph)
+plugins/                                       (default plugins, copied next to the exe by CMake)
 icon.svg                                       (app icon source)
 tool/svg_to_ico.py                             (icon.svg → app_icon.ico)
 tool/build_debug.ps1                           (debug build; -Run, -NoPause)
@@ -112,7 +122,11 @@ tool/build_release.ps1                         (release build + dist\NetworkAdap
 | `NetworkProfileApplier` | Use case: validate, apply, verify the result | validator, configurator, reader |
 | `PingExeHostPinger` | One echo request via `ping.exe`; reply = exit code 0 and `TTL=` in the output | `CommandRunner` |
 | `PingTargetsChecker` | Ping all targets concurrently, retry each until it answers or 10 s pass, emit results as they resolve | `HostPinger` |
-| View models | UI state and commands only, no network logic | applier, repository, reader, ping checker |
+| `PluginPathResolver` | Absolute command path stays; anything else is looked up in the plugins folder next to the exe | – |
+| `ProfileCommandRunner` | Run one profile command: resolve, check the file exists, start by file type, report `ProfileCommandOutcome`; stoppable, no time limit | `ProgramLauncher`, `PluginPathResolver` |
+| `ProcessProgramLauncher` | `Process.start` with working folder; collect stdout+stderr (last 20 000 chars); stop with `taskkill /T /F` | – |
+| `ExplorerFolderOpener` | Create a folder and open it in Explorer | `CommandRunner` |
+| View models | UI state and commands only, no network logic | applier, repository, reader, ping checker, command runner, folder opener |
 
 ## Model
 
@@ -124,6 +138,8 @@ tool/build_release.ps1                         (release build + dist\NetworkAdap
 - `dnsServers` (optional list)
 - `pingTargets` (optional list of `PingTarget`: `ipAddress` + optional
   `name`), for both DHCP and static profiles
+- `commands` (optional list of `ProfileCommand`: `path`, `arguments` list,
+  optional `name`, `runAfterApply` (default true)), for both modes
 
 A profile is independent of an adapter: the user picks the target adapter when
 applying it.
@@ -249,8 +265,50 @@ prefix length to a dotted subnet mask. The reader sits behind
   versions ignore the key and at worst show the help once more, while a bump
   would make them refuse the whole file. It is a personal setting: Export
   writes it as false, Import (merge and replace) keeps the current value.
-- `user_data.json` is `{"formatVersion": 3, "profiles": [...], "presets":
-  [...]}` (2 added `pingTargets`, 3 added `presets`; older files still load),
+- Profile commands (user request, 2026-10-09): run an `.exe`, `.ps1`, `.bat`
+  or `.cmd` with arguments. Design:
+  - Path: absolute (`C:\…`, `\\server\…`) is used as is; anything else is
+    looked up in `plugins\` next to the exe (`Platform.resolvedExecutable`).
+    Chosen over `%APPDATA%`: plugins ship in the release zip and travel with
+    the app folder, and whoever can write there can already replace the exe,
+    so it adds no new way to run code as admin.
+  - Default plugins live in the repository's `plugins/` folder (with a
+    README, which also keeps the folder in the zip: Compress-Archive skips
+    empty folders). `windows/CMakeLists.txt` installs it next to the exe on
+    every build (Debug too), adding/overwriting files but never removing
+    any. Edit plugins in the repository, not in `build\`. Plugins take all
+    settings as arguments (user's choice: `beckhoff-auto-router.ps1` had a
+    `-Setup`/`config.json`/environment fallback, removed 2026-10-09). As a
+    safeguard a `config.json` under `plugins/` is still treated as local
+    (could hold passwords): git-ignored, excluded by the CMake install and
+    removed from the release zip by `build_release.ps1`.
+  - Arguments are stored as a list, never one string. The editor field reads
+    like a command line (`CommandLineArguments`: spaces separate, double
+    quotes group, quotes are not passed on). A first "one argument per line"
+    field was dropped: the user typed everything on one line and the script
+    got it as one argument. `.exe` and `.bat`/`.cmd` start directly; `.ps1` via
+    `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File`.
+    Not `cmd.exe /c <bat> <args>`: tested 2026-10-09, it breaks on a quoted
+    path followed by quoted arguments, while starting the `.bat` directly lets
+    Dart quote correctly. cmd.exe still interprets `& | < > ^ "` inside batch
+    arguments (even quoted), so the validator rejects those for `.bat`/`.cmd`.
+  - Working folder: the file's own folder. No time limit (user's choice,
+    "like ping, see how long it takes"); the card shows the running time and
+    a Stop button that ends the process tree (`taskkill /T /F`) and skips the
+    remaining commands.
+  - Commands of a profile run one after another; a failing one does not stop
+    the rest. After applying they start once pinging is done (a share or tool
+    needs the link the ping waits for), only those with `runAfterApply`; the
+    Run button runs all. Presets run them once per applied profile, after the
+    pings.
+  - Result per command under the profile card (with an output dialog); the
+    status line shows the summary plus the last 4 output lines. Exit code 0
+    is success. Results are dropped when the profile is edited or deleted.
+  - Import shows a warning listing the file's commands (they run with admin
+    rights); the user chose a warning over disabling imported commands.
+- `user_data.json` is `{"formatVersion": 4, "profiles": [...], "presets":
+  [...]}` (2 added `pingTargets`, 3 added `presets`, 4 added `commands`;
+  older files still load),
   written to a
   `.tmp` file and renamed over the original. A file that cannot be parsed or
   has a newer format version raises `NetworkProfileStorageException`; never
@@ -353,6 +411,12 @@ prefix length to a dotted subnet mask. The reader sits behind
   `MainViewModel.switchSelectedAdapterToDhcp` and its tests remain so it can
   come back.
 - Profile editor: create, edit, delete profiles with inline validation.
+  Below the ping targets a "Commands" section: name, file, arguments (typed
+  like a command line), "Run after applying this profile" checkbox, and the plugin folder
+  path with an Open button (`ExplorerFolderOpener`).
+- Profile card with commands: "Run" button (becomes "Stop" while running);
+  per command a row with state dot, name, "Running · 12 s" / "Done · 0.4 s" /
+  "Exit code 2 · 3.1 s" / "Stopped" / "File not found", and an output button.
 - On the first start (`helpWasShown` false after a successful load) the help
   opens by itself: `MainView` listens to `MainViewModel.shouldShowHelpOnStart`
   and calls `markHelpAsShown()`, which saves the flag right away (not when

@@ -239,6 +239,9 @@ const _helpSteps = [
       'Ping targets (optional, e.g. "PLC 10.100.10.1") are pinged after '
           'applying, or with the Ping button. Each one is tried for up to '
           '10 seconds; the result shows under the profile.',
+      'Commands (optional) run a program or script (.exe, .ps1, .bat, .cmd) '
+          'after the ping targets, or with the Run button; Stop ends it. The '
+          'output shows at the bottom and under the profile.',
     ],
   ),
   _HelpStep(
@@ -265,6 +268,8 @@ const _helpSteps = [
       'Import loads the profiles and presets from such a file.',
       'If the file uses adapters this PC does not have, you can choose which '
           'local adapter to use instead while importing.',
+      'Import warns when the file contains commands. Only import files from '
+          'people you trust.',
     ],
   ),
   _HelpStep(
@@ -277,7 +282,11 @@ const _helpSteps = [
       'Switching to DHCP, or between static IPs, also works on an adapter '
           'that is not connected.',
       'The app needs administrator rights to change network settings, which '
-          'is why Windows asks for permission when it starts.',
+          'is why Windows asks for permission when it starts. Commands run '
+          'with the same rights.',
+      'A command file without a folder, e.g. "tool.exe", is looked up in the '
+          '"plugins" folder next to the app. Keep that folder when you update '
+          'the app.',
       r'Profiles and presets are stored in '
           r'%APPDATA%\NetworkAdapterTool\user_data.json.',
     ],

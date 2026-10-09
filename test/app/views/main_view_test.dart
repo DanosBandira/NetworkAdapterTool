@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:network_adapter_tool/app/view_models/main_view_model.dart';
 import 'package:network_adapter_tool/app/views/left_arrow_border.dart';
+import 'package:network_adapter_tool/core/commands/plugin_path_resolver.dart';
+import 'package:network_adapter_tool/core/commands/profile_command_runner.dart';
 import 'package:network_adapter_tool/core/models/addressing_mode.dart';
 import 'package:network_adapter_tool/core/models/network_adapter.dart';
 import 'package:network_adapter_tool/core/models/network_profile.dart';
+import 'package:network_adapter_tool/core/models/profile_command.dart';
 import 'package:network_adapter_tool/core/network_preset_applier.dart';
 import 'package:network_adapter_tool/core/network_profile_applier.dart';
 import 'package:network_adapter_tool/core/profiles/network_profile_validator.dart';
@@ -15,16 +18,20 @@ import 'package:network_adapter_tool/main.dart';
 import '../../fakes/fake_network_adapter_reader.dart';
 import '../../fakes/in_memory_network_profile_library_transfer.dart';
 import '../../fakes/in_memory_network_profile_repository.dart';
+import '../../fakes/recording_folder_opener.dart';
 import '../../fakes/recording_network_adapter_configurator.dart';
 import '../../fakes/scripted_host_pinger.dart';
+import '../../fakes/scripted_program_launcher.dart';
 
 void main() {
   late MainViewModel viewModel;
   late RecordingNetworkAdapterConfigurator configurator;
   late InMemoryNetworkProfileRepository repository;
+  late ScriptedProgramLauncher programLauncher;
 
   setUp(() async {
     configurator = RecordingNetworkAdapterConfigurator();
+    programLauncher = ScriptedProgramLauncher();
     final reader = FakeNetworkAdapterReader([
       const NetworkAdapter(
         name: 'Ethernet',
@@ -59,6 +66,12 @@ void main() {
       presetApplier: NetworkPresetApplier(applier),
       pingTargetsChecker: PingTargetsChecker(ScriptedHostPinger()),
       libraryTransfer: InMemoryNetworkProfileLibraryTransfer(),
+      profileCommandRunner: ProfileCommandRunner(
+        launcher: programLauncher,
+        pathResolver: PluginPathResolver(r'C:\App\plugins'),
+        fileExists: (_) async => true,
+      ),
+      folderOpener: RecordingFolderOpener(),
     );
   });
 
@@ -397,5 +410,49 @@ void main() {
     expect(find.text('New profile'), findsOneWidget);
     expect(find.text('Enter a profile name.'), findsOneWidget);
     expect(find.text('Enter an IP address.'), findsOneWidget);
+  });
+
+  testWidgets('shows the plugin folder and adds a command in the editor', (
+    tester,
+  ) async {
+    await showApp(tester);
+
+    await tester.tap(find.byTooltip('New profile'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Add command'));
+    await tester.tap(find.text('Add command'));
+    await tester.pump();
+
+    expect(find.text(r'C:\App\plugins'), findsOneWidget);
+    expect(find.text('Arguments (optional)'), findsOneWidget);
+    expect(find.text('Run after applying this profile'), findsOneWidget);
+  });
+
+  testWidgets('runs commands from the profile card and shows the result', (
+    tester,
+  ) async {
+    repository.storedLibrary = repository.storedLibrary.copyWith(
+      profiles: [
+        const NetworkProfile(
+          name: 'Line 1',
+          addressingMode: AddressingMode.dhcp,
+          commands: [ProfileCommand(path: 'tool.exe', name: 'Start tool')],
+        ),
+      ],
+    );
+    programLauncher.output = 'Tool started';
+    await showApp(tester);
+
+    expect(find.text('DHCP · 1 command'), findsOneWidget);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Run'));
+      await pumpEventQueue();
+    });
+    await tester.pump();
+
+    expect(find.text('Start tool'), findsOneWidget);
+    expect(find.textContaining('Done ·'), findsOneWidget);
+    expect(find.byTooltip('Show output'), findsOneWidget);
+    expect(find.textContaining('Tool started'), findsOneWidget);
   });
 }

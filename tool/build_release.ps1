@@ -60,6 +60,14 @@ try {
     New-Item -ItemType Directory -Force $stagingFolder | Out-Null
     Copy-Item (Join-Path $releaseFolder '*') $stagingFolder -Recurse -Exclude '*.pdb', 'network_profile_switcher.exe'
 
+    # The plugins folder comes from the repository via the CMake install step.
+    # A config.json is written by a plugin on this PC (e.g. a saved password)
+    # and must not reach other users.
+    $pluginFolder = Join-Path $stagingFolder 'plugins'
+    if (Test-Path $pluginFolder) {
+        Get-ChildItem $pluginFolder -Recurse -Filter 'config.json' | Remove-Item -Force
+    }
+
     if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
     Compress-Archive -Path $stagingFolder -DestinationPath $zipPath
     Remove-Item $stagingFolder -Recurse -Force

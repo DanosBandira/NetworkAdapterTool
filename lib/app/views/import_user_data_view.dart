@@ -57,6 +57,8 @@ class _ImportUserDataViewState extends State<ImportUserDataView> {
                 '${importedLibrary.presets.length} presets',
                 style: theme.textTheme.bodySmall,
               ),
+              if (widget.libraryImport.commands.isNotEmpty)
+                ..._buildCommandWarning(theme),
               const SizedBox(height: 16),
               RadioGroup<LibraryImportMode>(
                 groupValue: _mode,
@@ -106,6 +108,56 @@ class _ImportUserDataViewState extends State<ImportUserDataView> {
         ),
       ],
     );
+  }
+
+  // Commands run with the app's administrator rights, so a file from someone
+  // else could run anything on this PC. Only a warning: the user decided
+  // against blocking imported commands.
+  List<Widget> _buildCommandWarning(ThemeData theme) {
+    final errorColor = theme.colorScheme.error;
+    return [
+      const SizedBox(height: 16),
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: errorColor),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: errorColor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'This file contains commands',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: errorColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'They run programs on this PC with administrator rights. Only '
+              'import files from people you trust.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            for (final (profileName, command) in widget.libraryImport.commands)
+              Text(
+                '$profileName: ${[command.path, ...command.arguments].join(' ')}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontFamily: 'Consolas',
+                ),
+              ),
+          ],
+        ),
+      ),
+    ];
   }
 
   List<Widget> _buildAdapterMapping(ThemeData theme) {

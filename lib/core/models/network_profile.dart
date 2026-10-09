@@ -1,5 +1,6 @@
 import 'addressing_mode.dart';
 import 'ping_target.dart';
+import 'profile_command.dart';
 
 /// A named set of IPv4 settings that can be applied to any network adapter.
 ///
@@ -15,6 +16,7 @@ class NetworkProfile {
     this.defaultGateway,
     this.dnsServers = const [],
     this.pingTargets = const [],
+    this.commands = const [],
   });
 
   factory NetworkProfile.fromJson(Map<String, Object?> json) {
@@ -33,6 +35,11 @@ class NetworkProfile {
         for (final pingTargetEntry
             in json['pingTargets'] as List<Object?>? ?? const <Object?>[])
           PingTarget.fromJson(pingTargetEntry as Map<String, Object?>),
+      ],
+      commands: [
+        for (final commandEntry
+            in json['commands'] as List<Object?>? ?? const <Object?>[])
+          ProfileCommand.fromJson(commandEntry as Map<String, Object?>),
       ],
     );
   }
@@ -55,6 +62,14 @@ class NetworkProfile {
   /// static profiles.
   final List<PingTarget> pingTargets;
 
+  /// Programs or scripts run after the ping targets were checked, in order.
+  final List<ProfileCommand> commands;
+
+  List<ProfileCommand> get commandsToRunAfterApply => [
+    for (final command in commands)
+      if (command.runAfterApply) command,
+  ];
+
   /// The same settings under another name, e.g. to avoid a duplicate when
   /// merging imported profiles.
   NetworkProfile withName(String newName) {
@@ -66,6 +81,7 @@ class NetworkProfile {
       defaultGateway: defaultGateway,
       dnsServers: dnsServers,
       pingTargets: pingTargets,
+      commands: commands,
     );
   }
 
@@ -79,6 +95,8 @@ class NetworkProfile {
       if (dnsServers.isNotEmpty) 'dnsServers': dnsServers,
       if (pingTargets.isNotEmpty)
         'pingTargets': [for (final target in pingTargets) target.toJson()],
+      if (commands.isNotEmpty)
+        'commands': [for (final command in commands) command.toJson()],
     };
   }
 }

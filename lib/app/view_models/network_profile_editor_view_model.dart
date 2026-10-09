@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/commands/command_line_arguments.dart';
 import '../../core/models/addressing_mode.dart';
 import '../../core/models/network_profile.dart';
 import '../../core/models/ping_target.dart';
+import '../../core/models/profile_command.dart';
 import '../../core/profiles/network_profile_validator.dart';
 
 /// State of the profile editor dialog: the text of each field and the inline
@@ -33,6 +35,17 @@ class NetworkProfileEditorViewModel extends ChangeNotifier {
         ),
       );
     }
+    for (final command in originalProfile?.commands ?? <ProfileCommand>[]) {
+      _commandDrafts.add(
+        CommandDraft._(
+          _nextCommandDraftId++,
+          name: command.name ?? '',
+          path: command.path,
+          argumentsText: CommandLineArguments.join(command.arguments),
+          runAfterApply: command.runAfterApply,
+        ),
+      );
+    }
   }
 
   /// `null` when creating a new profile.
@@ -56,11 +69,15 @@ class NetworkProfileEditorViewModel extends ChangeNotifier {
   final List<PingTargetDraft> _pingTargetDrafts = [];
   int _nextPingTargetDraftId = 0;
 
+  final List<CommandDraft> _commandDrafts = [];
+  int _nextCommandDraftId = 0;
+
   final Set<NetworkProfileField> _editedFields = {};
   bool _saveWasAttempted = false;
 
   List<PingTargetDraft> get pingTargetDrafts =>
       List.unmodifiable(_pingTargetDrafts);
+  List<CommandDraft> get commandDrafts => List.unmodifiable(_commandDrafts);
 
   bool get isNewProfile => originalProfile == null;
   String get name => _name;
@@ -127,6 +144,37 @@ class NetworkProfileEditorViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void addCommand() {
+    _commandDrafts.add(CommandDraft._(_nextCommandDraftId++));
+    notifyListeners();
+  }
+
+  void updateCommandName(int draftId, String name) {
+    _commandDraftWithId(draftId).name = name;
+    _markEdited(NetworkProfileField.commands);
+  }
+
+  void updateCommandPath(int draftId, String path) {
+    _commandDraftWithId(draftId).path = path;
+    _markEdited(NetworkProfileField.commands);
+  }
+
+  /// As on a command line: spaces separate, double quotes group.
+  void updateCommandArguments(int draftId, String argumentsText) {
+    _commandDraftWithId(draftId).argumentsText = argumentsText;
+    _markEdited(NetworkProfileField.commands);
+  }
+
+  void updateCommandRunAfterApply(int draftId, bool runAfterApply) {
+    _commandDraftWithId(draftId).runAfterApply = runAfterApply;
+    notifyListeners();
+  }
+
+  void removeCommand(int draftId) {
+    _commandDrafts.removeWhere((draft) => draft.id == draftId);
+    notifyListeners();
+  }
+
   /// All messages for [field] joined, or `null` when there is nothing to
   /// show (yet).
   String? errorFor(NetworkProfileField field) {
@@ -162,15 +210,19 @@ class NetworkProfileEditorViewModel extends ChangeNotifier {
   PingTargetDraft _draftWithId(int draftId) =>
       _pingTargetDrafts.firstWhere((draft) => draft.id == draftId);
 
+  CommandDraft _commandDraftWithId(int draftId) =>
+      _commandDrafts.firstWhere((draft) => draft.id == draftId);
+
   // A DHCP profile drops the address fields, so switching a profile to DHCP
-  // does not keep stale static settings in user_data.json. Ping targets are
-  // kept for both modes.
+  // does not keep stale static settings in user_data.json. Ping targets and
+  // commands are kept for both modes.
   NetworkProfile _buildProfile() {
     if (!usesStaticAddress) {
       return NetworkProfile(
         name: _name.trim(),
         addressingMode: AddressingMode.dhcp,
         pingTargets: _buildPingTargets(),
+        commands: _buildCommands(),
       );
     }
     return NetworkProfile(
@@ -188,6 +240,7 @@ class NetworkProfileEditorViewModel extends ChangeNotifier {
           ?_trimmedOrNull(dnsServer),
       ],
       pingTargets: _buildPingTargets(),
+      commands: _buildCommands(),
     );
   }
 
@@ -199,6 +252,18 @@ class NetworkProfileEditorViewModel extends ChangeNotifier {
         PingTarget(
           ipAddress: draft.ipAddress.trim(),
           name: _trimmedOrNull(draft.name),
+        ),
+  ];
+
+  // Like ping targets, untouched empty rows are skipped.
+  List<ProfileCommand> _buildCommands() => [
+    for (final draft in _commandDrafts)
+      if (!draft.isEmpty)
+        ProfileCommand(
+          path: draft.path.trim(),
+          arguments: CommandLineArguments.split(draft.argumentsText),
+          name: _trimmedOrNull(draft.name),
+          runAfterApply: draft.runAfterApply,
         ),
   ];
 
@@ -225,4 +290,29 @@ class PingTargetDraft {
   String ipAddress;
 
   bool get isEmpty => name.trim().isEmpty && ipAddress.trim().isEmpty;
+}
+
+/// One editable row in the editor's command list; see [PingTargetDraft] for
+/// why it has an [id].
+class CommandDraft {
+  CommandDraft._(
+    this.id, {
+    this.name = '',
+    this.path = '',
+    this.argumentsText = '',
+    this.runAfterApply = true,
+  });
+
+  final int id;
+  String name;
+  String path;
+
+  /// As on a command line: spaces separate, double quotes group.
+  String argumentsText;
+  bool runAfterApply;
+
+  bool get isEmpty =>
+      name.trim().isEmpty &&
+      path.trim().isEmpty &&
+      argumentsText.trim().isEmpty;
 }

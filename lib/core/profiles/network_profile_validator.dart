@@ -2,6 +2,7 @@ import '../models/addressing_mode.dart';
 import '../models/ipv4_address.dart';
 import '../models/network_profile.dart';
 import '../models/ping_target.dart';
+import '../models/profile_command.dart';
 
 /// The profile input a validation error belongs to, so the editor can show
 /// the message next to the right field.
@@ -12,6 +13,7 @@ enum NetworkProfileField {
   defaultGateway,
   dnsServers,
   pingTargets,
+  commands,
 }
 
 class NetworkProfileValidationError {
@@ -26,16 +28,21 @@ class NetworkProfileValidationError {
 
 /// Checks that a profile is complete and consistent before it is saved or
 /// applied: valid IPv4 addresses, a contiguous subnet mask, a gateway inside
-/// the subnet, valid DNS servers and valid ping targets.
+/// the subnet, valid DNS servers, valid ping targets and runnable commands.
 ///
-/// DHCP profiles only need a name and valid ping targets; their address
-/// fields are ignored because the configurator never uses them.
+/// DHCP profiles only need a name, valid ping targets and valid commands;
+/// their address fields are ignored because the configurator never uses
+/// them.
 class NetworkProfileValidator {
   const NetworkProfileValidator();
 
   // Below /31 a subnet reserves its first and last address (RFC 3021 makes
   // /31 point-to-point links the exception).
   static const _longestPrefixWithNetworkAndBroadcast = 30;
+
+  // cmd.exe interprets these inside a batch file's arguments even when the
+  // argument is quoted, so "a&b" would run "b" as a second command.
+  static final _batchFileSpecialCharacters = RegExp(r'[&|<>^"]');
 
   /// Returns all problems at once, so the editor can mark every field.
   ///
@@ -50,6 +57,7 @@ class NetworkProfileValidator {
       if (profile.addressingMode == AddressingMode.staticIp)
         ..._validateStaticSettings(profile),
       ..._validatePingTargets(profile.pingTargets),
+      ..._validateCommands(profile.commands),
     ];
   }
 
@@ -226,6 +234,32 @@ class NetworkProfileValidator {
         yield NetworkProfileValidationError(
           NetworkProfileField.pingTargets,
           'Ping target "${pingTarget.ipAddress}" is listed more than once.',
+        );
+      }
+    }
+  }
+
+  Iterable<NetworkProfileValidationError> _validateCommands(
+    List<ProfileCommand> commands,
+  ) sync* {
+    for (final command in commands) {
+      final fileType = command.fileType;
+      if (_isBlank(command.path)) {
+        yield NetworkProfileValidationError(
+          NetworkProfileField.commands,
+          'Command "${command.displayName}" needs a file.',
+        );
+      } else if (fileType == null) {
+        yield NetworkProfileValidationError(
+          NetworkProfileField.commands,
+          'Command "${command.path}" must be an .exe, .ps1, .bat or .cmd file.',
+        );
+      } else if (fileType.runsThroughCmd &&
+          command.arguments.any(_batchFileSpecialCharacters.hasMatch)) {
+        yield NetworkProfileValidationError(
+          NetworkProfileField.commands,
+          'Command "${command.displayName}": arguments of a batch file cannot '
+          r'contain & | < > ^ or ". Use a PowerShell script instead.',
         );
       }
     }

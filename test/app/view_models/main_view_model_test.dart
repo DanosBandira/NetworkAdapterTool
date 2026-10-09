@@ -1,24 +1,29 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:network_adapter_tool/app/view_models/main_view_model.dart';
+import 'package:network_adapter_tool/core/commands/plugin_path_resolver.dart';
+import 'package:network_adapter_tool/core/commands/profile_command_runner.dart';
 import 'package:network_adapter_tool/core/contracts/network_adapter_configurator.dart';
 import 'package:network_adapter_tool/core/contracts/network_adapter_reader.dart';
 import 'package:network_adapter_tool/core/contracts/network_profile_repository.dart';
 import 'package:network_adapter_tool/core/models/addressing_mode.dart';
 import 'package:network_adapter_tool/core/models/network_adapter.dart';
-import 'package:network_adapter_tool/core/models/network_profile.dart';
 import 'package:network_adapter_tool/core/models/network_preset.dart';
+import 'package:network_adapter_tool/core/models/network_profile.dart';
 import 'package:network_adapter_tool/core/models/network_profile_library.dart';
+import 'package:network_adapter_tool/core/models/ping_target.dart';
+import 'package:network_adapter_tool/core/models/profile_command.dart';
 import 'package:network_adapter_tool/core/network_preset_applier.dart';
 import 'package:network_adapter_tool/core/network_profile_applier.dart';
-import 'package:network_adapter_tool/core/models/ping_target.dart';
 import 'package:network_adapter_tool/core/profiles/network_profile_validator.dart';
 import 'package:network_adapter_tool/core/reachability/ping_targets_checker.dart';
 
 import '../../fakes/fake_network_adapter_reader.dart';
 import '../../fakes/in_memory_network_profile_library_transfer.dart';
 import '../../fakes/in_memory_network_profile_repository.dart';
+import '../../fakes/recording_folder_opener.dart';
 import '../../fakes/recording_network_adapter_configurator.dart';
 import '../../fakes/scripted_host_pinger.dart';
+import '../../fakes/scripted_program_launcher.dart';
 
 void main() {
   const machineProfile = NetworkProfile(
@@ -51,6 +56,9 @@ void main() {
   late InMemoryNetworkProfileRepository repository;
   late ScriptedHostPinger pinger;
   late InMemoryNetworkProfileLibraryTransfer libraryTransfer;
+  late ScriptedProgramLauncher programLauncher;
+  late RecordingFolderOpener folderOpener;
+  late Set<String> missingFiles;
 
   setUp(() {
     configurator = RecordingNetworkAdapterConfigurator();
@@ -59,6 +67,9 @@ void main() {
     );
     pinger = ScriptedHostPinger();
     libraryTransfer = InMemoryNetworkProfileLibraryTransfer();
+    programLauncher = ScriptedProgramLauncher();
+    folderOpener = RecordingFolderOpener();
+    missingFiles = {};
   });
 
   MainViewModel createViewModel(NetworkAdapterReader reader) {
@@ -79,6 +90,12 @@ void main() {
         pauseAfterFailedAttempt: const Duration(milliseconds: 5),
       ),
       libraryTransfer: libraryTransfer,
+      profileCommandRunner: ProfileCommandRunner(
+        launcher: programLauncher,
+        pathResolver: PluginPathResolver(r'C:\App\plugins'),
+        fileExists: (filePath) async => !missingFiles.contains(filePath),
+      ),
+      folderOpener: folderOpener,
     );
   }
 
@@ -587,6 +604,259 @@ void main() {
       await viewModel.deleteProfile(lineProfile);
 
       expect(viewModel.pingStatusesFor(lineProfile.name), isNull);
+    });
+  });
+
+  group('commands', () {
+    const mapDrive = ProfileCommand(
+      path: 'map_drive.ps1',
+      arguments: ['Z:'],
+      name: 'Map drive',
+    );
+    const viewer = ProfileCommand(path: 'viewer.exe', runAfterApply: false);
+    const lineProfile = NetworkProfile(
+      name: 'Line 1',
+      addressingMode: AddressingMode.dhcp,
+      commands: [mapDrive, viewer],
+    );
+
+    setUp(() {
+      repository = InMemoryNetworkProfileRepository(
+        storedProfiles: [lineProfile, officeProfile],
+      );
+    });
+
+    List<CommandState> statesOf(MainViewModel viewModel) => [
+      for (final status in viewModel.commandStatusesFor(lineProfile.name)!)
+        status.state,
+    ];
+
+    test('runs the commands marked for it after applying', () async {
+      programLauncher.output = 'Drive Z: mapped\r\n';
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      viewModel
+        ..selectAdapter('Ethernet')
+        ..selectProfile(lineProfile.name);
+
+      await viewModel.applySelectedProfileToSelectedAdapter();
+
+      expect(
+        programLauncher.launchedPrograms.single.executable,
+        'powershell.exe',
+      );
+      expect(statesOf(viewModel), [CommandState.succeeded]);
+      expect(viewModel.statusMessage?.kind, StatusKind.success);
+      expect(
+        viewModel.statusMessage?.text,
+        allOf(contains('"Map drive" finished'), contains('Drive Z: mapped')),
+      );
+    });
+
+    test('does not run commands when applying failed', () async {
+      configurator = RecordingNetworkAdapterConfigurator(
+        errorToThrow: const NetworkConfigurationException(
+          failedCommand: 'netsh.exe',
+          exitCode: 1,
+          output: 'failed',
+        ),
+      );
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      viewModel
+        ..selectAdapter('Ethernet')
+        ..selectProfile(lineProfile.name);
+
+      await viewModel.applySelectedProfileToSelectedAdapter();
+
+      expect(programLauncher.launchedPrograms, isEmpty);
+      expect(viewModel.commandStatusesFor(lineProfile.name), isNull);
+    });
+
+    test('runs every command on demand and shows them running', () async {
+      programLauncher.finishImmediately = false;
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      final running = viewModel.runCommandsOf(lineProfile);
+      await pumpEventQueue();
+
+      expect(viewModel.isRunningCommands(lineProfile.name), isTrue);
+      expect(viewModel.canRunCommands(lineProfile), isFalse);
+      expect(statesOf(viewModel), [CommandState.running, CommandState.waiting]);
+      expect(viewModel.statusMessage?.kind, StatusKind.progress);
+
+      programLauncher.launchedPrograms.last.finish();
+      await pumpEventQueue();
+      programLauncher.launchedPrograms.last.finish();
+      await running;
+
+      expect(programLauncher.launchedPrograms, hasLength(2));
+      expect(statesOf(viewModel), [
+        CommandState.succeeded,
+        CommandState.succeeded,
+      ]);
+      expect(viewModel.canRunCommands(lineProfile), isTrue);
+    });
+
+    test('keeps going after a failing command and shows its output', () async {
+      programLauncher
+        ..exitCode = 3
+        ..output = 'line 1\nline 2\nline 3\nline 4\nline 5\n';
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      await viewModel.runCommandsOf(lineProfile);
+
+      expect(statesOf(viewModel), [CommandState.failed, CommandState.failed]);
+      final statusText = viewModel.statusMessage!.text;
+      expect(viewModel.statusMessage?.kind, StatusKind.error);
+      expect(statusText, contains('failed with exit code 3'));
+      expect(statusText, contains('line 5'));
+      expect(statusText, isNot(contains('line 1')));
+      expect(
+        viewModel.commandStatusesFor(lineProfile.name)!.first.resultText,
+        startsWith('Exit code 3'),
+      );
+    });
+
+    test('stops the running command and skips the rest', () async {
+      programLauncher.finishImmediately = false;
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      final running = viewModel.runCommandsOf(lineProfile);
+      await pumpEventQueue();
+
+      await viewModel.stopCommandsOf(lineProfile.name);
+      await running;
+
+      expect(programLauncher.launchedPrograms.single.wasStopped, isTrue);
+      expect(statesOf(viewModel), [CommandState.stopped, CommandState.skipped]);
+      expect(viewModel.statusMessage?.text, contains('was stopped'));
+      expect(viewModel.isRunningCommands(lineProfile.name), isFalse);
+    });
+
+    test('marks a missing file and still runs the next command', () async {
+      missingFiles.add(r'C:\App\plugins\map_drive.ps1');
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      await viewModel.runCommandsOf(lineProfile);
+
+      expect(statesOf(viewModel), [
+        CommandState.failed,
+        CommandState.succeeded,
+      ]);
+      expect(
+        viewModel.commandStatusesFor(lineProfile.name)!.first.resultText,
+        'File not found',
+      );
+    });
+
+    test('reports where a missing file was looked for', () async {
+      missingFiles.add(r'C:\App\plugins\viewer.exe');
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      await viewModel.runCommandsOf(lineProfile);
+
+      expect(
+        viewModel.statusMessage?.text,
+        allOf(
+          contains(r'C:\App\plugins\viewer.exe'),
+          contains('plugin folder'),
+        ),
+      );
+    });
+
+    test('forgets results when the profile is edited', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      await viewModel.runCommandsOf(lineProfile);
+
+      await viewModel.saveProfile(
+        lineProfile.withName('Line 2'),
+        originalProfile: lineProfile,
+      );
+
+      expect(viewModel.commandStatusesFor(lineProfile.name), isNull);
+    });
+
+    test('opens the plugin folder', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      await viewModel.openPluginFolder();
+
+      expect(folderOpener.openedFolders, [r'C:\App\plugins']);
+    });
+
+    test('explains when the plugin folder cannot be opened', () async {
+      folderOpener = RecordingFolderOpener(failure: 'Access is denied.');
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      await viewModel.openPluginFolder();
+
+      expect(viewModel.statusMessage?.kind, StatusKind.error);
+      expect(viewModel.statusMessage?.text, contains('Access is denied.'));
+    });
+
+    test('lists the commands of a file before importing it', () async {
+      libraryTransfer.filesByPath['shared.json'] = const NetworkProfileLibrary(
+        profiles: [lineProfile],
+      );
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      final libraryImport = await viewModel.prepareImport('shared.json');
+
+      expect(libraryImport!.commands, [
+        (lineProfile.name, mapDrive),
+        (lineProfile.name, viewer),
+      ]);
+    });
+
+    test('runs commands once for a preset using the profile twice', () async {
+      repository = InMemoryNetworkProfileRepository(
+        storedProfiles: [lineProfile],
+        storedPresets: [
+          const NetworkPreset(
+            name: 'Both',
+            assignments: [
+              PresetAssignment(adapterName: 'Ethernet', profileName: 'Line 1'),
+              PresetAssignment(adapterName: 'Wi-Fi', profileName: 'Line 1'),
+            ],
+          ),
+        ],
+      );
+      final viewModel = await initializedViewModel(
+        _TwoAdapterReader(
+          ethernet(),
+          const NetworkAdapter(
+            name: 'Wi-Fi',
+            description: 'Intel(R) Wi-Fi',
+            status: NetworkAdapterStatus.connected,
+            addressingMode: AddressingMode.dhcp,
+          ),
+        ),
+      );
+
+      await viewModel.applyPreset(viewModel.presets.single);
+
+      expect(programLauncher.launchedPrograms, hasLength(1));
+      expect(statesOf(viewModel), [CommandState.succeeded]);
     });
   });
 

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:network_adapter_tool/core/models/addressing_mode.dart';
 import 'package:network_adapter_tool/core/models/network_profile.dart';
 import 'package:network_adapter_tool/core/models/ping_target.dart';
+import 'package:network_adapter_tool/core/models/profile_command.dart';
 import 'package:network_adapter_tool/core/profiles/network_profile_validator.dart';
 
 void main() {
@@ -266,6 +267,61 @@ void main() {
         ),
         [NetworkProfileField.pingTargets],
       );
+    });
+  });
+
+  group('commands', () {
+    NetworkProfile dhcpProfileWithCommands(List<ProfileCommand> commands) {
+      return NetworkProfile(
+        name: 'Machine',
+        addressingMode: AddressingMode.dhcp,
+        commands: commands,
+      );
+    }
+
+    test('accepts every runnable file type', () {
+      expect(
+        fieldsWithErrors(
+          dhcpProfileWithCommands(const [
+            ProfileCommand(path: 'tool.exe'),
+            ProfileCommand(path: r'C:\Scripts\Map.PS1', arguments: ['a&b']),
+            ProfileCommand(path: 'setup.bat', arguments: ['two words']),
+            ProfileCommand(path: 'setup.cmd'),
+          ]),
+        ),
+        isEmpty,
+      );
+    });
+
+    test('rejects a command without a file', () {
+      final errors = validator.validate(
+        dhcpProfileWithCommands(const [ProfileCommand(path: ' ', name: 'Map')]),
+      );
+
+      expect(errors.single.field, NetworkProfileField.commands);
+      expect(errors.single.message, contains('"Map" needs a file'));
+    });
+
+    test('rejects a file type that cannot run', () {
+      final errors = validator.validate(
+        dhcpProfileWithCommands(const [ProfileCommand(path: 'notes.txt')]),
+      );
+
+      expect(errors.single.message, contains('.exe, .ps1, .bat or .cmd'));
+    });
+
+    test('rejects cmd.exe special characters in batch file arguments', () {
+      for (final argument in ['a&b', 'a|b', '>out', 'say "hi"', 'x^y']) {
+        expect(
+          fieldsWithErrors(
+            dhcpProfileWithCommands([
+              ProfileCommand(path: 'setup.bat', arguments: [argument]),
+            ]),
+          ),
+          [NetworkProfileField.commands],
+          reason: argument,
+        );
+      }
     });
   });
 

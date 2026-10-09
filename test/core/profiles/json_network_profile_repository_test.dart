@@ -8,6 +8,7 @@ import 'package:network_adapter_tool/core/models/network_preset.dart';
 import 'package:network_adapter_tool/core/models/network_profile.dart';
 import 'package:network_adapter_tool/core/models/network_profile_library.dart';
 import 'package:network_adapter_tool/core/models/ping_target.dart';
+import 'package:network_adapter_tool/core/models/profile_command.dart';
 import 'package:network_adapter_tool/core/profiles/json_network_profile_repository.dart';
 
 void main() {
@@ -97,9 +98,9 @@ void main() {
     );
 
     final fileContent = await userDataFile.readAsString();
-    expect(fileContent, contains('\n  "formatVersion": 3'));
+    expect(fileContent, contains('\n  "formatVersion": 4'));
     expect(jsonDecode(fileContent), {
-      'formatVersion': 3,
+      'formatVersion': 4,
       'profiles': [
         {'name': 'Office', 'addressingMode': 'dhcp'},
       ],
@@ -125,6 +126,39 @@ void main() {
     final loadedProfile = (await repository.loadLibrary()).profiles.single;
 
     expect(loadedProfile.pingTargets, profileWithPingTargets.pingTargets);
+  });
+
+  test('stores commands with their arguments in order', () async {
+    const profileWithCommands = NetworkProfile(
+      name: 'Machine',
+      addressingMode: AddressingMode.dhcp,
+      commands: [
+        ProfileCommand(
+          path: 'map_drive.ps1',
+          arguments: ['-Drive', 'Z:', r'\\server\share name'],
+          name: 'Map drive',
+        ),
+        ProfileCommand(path: r'C:\Tools\viewer.exe', runAfterApply: false),
+      ],
+    );
+
+    await repository.saveLibrary(
+      const NetworkProfileLibrary(profiles: [profileWithCommands]),
+    );
+    final loadedProfile = (await repository.loadLibrary()).profiles.single;
+
+    expect(loadedProfile.commands, profileWithCommands.commands);
+  });
+
+  test('loads a format 3 file without commands', () async {
+    await writeUserDataFile(
+      '{"formatVersion":3,"profiles":[{"name":"Office",'
+      '"addressingMode":"dhcp"}],"presets":[]}',
+    );
+
+    final loadedProfile = (await repository.loadLibrary()).profiles.single;
+
+    expect(loadedProfile.commands, isEmpty);
   });
 
   test('stores presets with their assignments in order', () async {
@@ -235,7 +269,7 @@ void main() {
     });
 
     test('when the file was written by a newer app version', () async {
-      await expectLoadingFails('{"formatVersion":4,"profiles":[]}');
+      await expectLoadingFails('{"formatVersion":5,"profiles":[]}');
     });
   });
 }

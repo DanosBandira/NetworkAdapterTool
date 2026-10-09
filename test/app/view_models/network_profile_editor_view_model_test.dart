@@ -3,6 +3,7 @@ import 'package:network_adapter_tool/app/view_models/network_profile_editor_view
 import 'package:network_adapter_tool/core/models/addressing_mode.dart';
 import 'package:network_adapter_tool/core/models/network_profile.dart';
 import 'package:network_adapter_tool/core/models/ping_target.dart';
+import 'package:network_adapter_tool/core/models/profile_command.dart';
 import 'package:network_adapter_tool/core/profiles/network_profile_validator.dart';
 
 void main() {
@@ -139,6 +140,83 @@ void main() {
       final draft = editor.pingTargetDrafts.single;
       expect(draft.name, 'PLC');
       expect(draft.ipAddress, '10.100.10.1');
+    });
+  });
+
+  group('commands', () {
+    NetworkProfileEditorViewModel validDhcpEditor() {
+      return newProfileEditor()
+        ..updateName('Line 1')
+        ..updateAddressingMode(AddressingMode.dhcp);
+    }
+
+    test('builds commands from arguments typed as a command line', () {
+      final editor = validDhcpEditor()
+        ..addCommand()
+        ..addCommand();
+      final [mapRow, viewerRow] = editor.commandDrafts;
+      editor
+        ..updateCommandName(mapRow.id, 'Map drive')
+        ..updateCommandPath(mapRow.id, ' map_drive.ps1 ')
+        ..updateCommandArguments(mapRow.id, ' -Drive Z:  "two words" ')
+        ..updateCommandPath(viewerRow.id, 'viewer.exe')
+        ..updateCommandRunAfterApply(viewerRow.id, false);
+
+      final savedProfile = editor.trySave()!;
+
+      expect(savedProfile.commands, [
+        const ProfileCommand(
+          path: 'map_drive.ps1',
+          arguments: ['-Drive', 'Z:', 'two words'],
+          name: 'Map drive',
+        ),
+        const ProfileCommand(path: 'viewer.exe', runAfterApply: false),
+      ]);
+    });
+
+    test('runs a new command after applying by default', () {
+      final editor = validDhcpEditor()..addCommand();
+
+      expect(editor.commandDrafts.single.runAfterApply, isTrue);
+    });
+
+    test('skips rows that were added but left empty', () {
+      final editor = validDhcpEditor()
+        ..addCommand()
+        ..addCommand();
+      editor.removeCommand(editor.commandDrafts.first.id);
+
+      expect(editor.trySave()!.commands, isEmpty);
+    });
+
+    test('shows an error for a file type that cannot run', () {
+      final editor = validDhcpEditor()..addCommand();
+      editor.updateCommandPath(editor.commandDrafts.single.id, 'notes.txt');
+
+      expect(editor.errorFor(NetworkProfileField.commands), isNotNull);
+      expect(editor.trySave(), isNull);
+    });
+
+    test('loads the commands of an existing profile', () {
+      final editor = NetworkProfileEditorViewModel(
+        originalProfile: const NetworkProfile(
+          name: 'Line 1',
+          addressingMode: AddressingMode.dhcp,
+          commands: [
+            ProfileCommand(
+              path: 'map_drive.ps1',
+              arguments: ['-Drive', 'Z:'],
+              runAfterApply: false,
+            ),
+          ],
+        ),
+        otherProfileNames: const [],
+      );
+
+      final draft = editor.commandDrafts.single;
+      expect(draft.path, 'map_drive.ps1');
+      expect(draft.argumentsText, '-Drive Z:');
+      expect(draft.runAfterApply, isFalse);
     });
   });
 
