@@ -419,6 +419,12 @@ void main() {
 
     await tester.tap(find.byTooltip('New profile'));
     await tester.pumpAndSettle();
+    expect(find.text('Add command'), findsNothing);
+    expect(find.text('No commands'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Commands'));
+    await tester.tap(find.text('Commands'));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Add command'));
     await tester.tap(find.text('Add command'));
     await tester.pump();
@@ -426,6 +432,31 @@ void main() {
     expect(find.text(r'C:\App\plugins'), findsOneWidget);
     expect(find.text('Arguments (optional)'), findsOneWidget);
     expect(find.text('Run after applying this profile'), findsOneWidget);
+  });
+
+  testWidgets('folds the network settings and opens them on an error', (
+    tester,
+  ) async {
+    await showApp(tester);
+
+    await tester.tap(find.byTooltip('New profile'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Network settings'));
+    await tester.pumpAndSettle();
+    final dialog = find.byType(AlertDialog);
+    expect(
+      find.descendant(of: dialog, matching: find.text('Static')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: dialog, matching: find.text('IP address')),
+      findsNothing,
+    );
+
+    await tester.tap(saveButtonInDialog());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enter an IP address.'), findsOneWidget);
   });
 
   testWidgets('runs commands from the profile card and shows the result', (

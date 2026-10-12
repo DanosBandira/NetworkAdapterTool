@@ -90,6 +90,7 @@ lib/
         ├── adapter_settings_view.dart          (double-click: configure adapter directly)
         ├── apply_arrow_button.dart            (orange arrow; also used in help)
         ├── card_colors.dart                   (profile/preset card colors)
+        ├── collapsible_section.dart           (foldable form section, profile editor)
         ├── help_view.dart                     (step-by-step help; steps in _helpSteps)
         ├── help_examples.dart                 (example pictures per help step)
         ├── import_user_data_view.dart         (merge/replace + adapter mapping)
@@ -340,6 +341,10 @@ prefix length to a dotted subnet mask. The reader sits behind
   the rest from its own folder. The build scripts end with a colored
   success/failure line and wait for a key (`-NoPause` skips that) and exit
   with code 1 on failure.
+  `build_release.ps1` passes `--no-tree-shake-icons`: on 2026-10-12 the
+  release build kept a tree-shaken `MaterialIcons-Regular.otf` from 3 days
+  earlier, so newly used icons (collapse arrow, error icon) were silently
+  invisible. The full font adds 1.6 MB.
   `windows/CMakeLists.txt` installs the VC++ runtime DLLs app-locally for
   Profile/Release, so the target PC needs no VC++ Redistributable (the UCRT
   `api-ms-win-crt-*` DLLs ship with Windows 10/11). Never distribute the
@@ -411,8 +416,16 @@ prefix length to a dotted subnet mask. The reader sits behind
   `MainViewModel.switchSelectedAdapterToDhcp` and its tests remain so it can
   come back.
 - Profile editor: create, edit, delete profiles with inline validation.
-  Below the ping targets a "Commands" section: name, file, arguments (typed
-  like a command line), "Run after applying this profile" checkbox, and the plugin folder
+  The dialog is 640 px wide. Below the name, "Network settings", "Ping
+  targets" and "Commands" are `CollapsibleSection`s: network settings start
+  open, the other two only when the profile has entries. A folded section
+  shows a summary ("Static · ip / mask", "2 ping targets") and a red border
+  plus error icon when it holds an error; Save opens every section with
+  errors.
+  Below the ping targets a "Commands" section: name, file (typed, or picked
+  with a Browse button that opens in the current file's folder or the plugin
+  folder; a picked file inside the plugin folder is stored relative,
+  elsewhere absolute), arguments (typed like a command line), "Run after applying this profile" checkbox, and the plugin folder
   path with an Open button (`ExplorerFolderOpener`).
 - Profile card with commands: "Run" button (becomes "Stop" while running);
   per command a row with state dot, name, "Running · 12 s" / "Done · 0.4 s" /

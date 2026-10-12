@@ -26,4 +26,23 @@ class PluginPathResolver {
   /// The folder a resolved command runs in, so a script finds the files next
   /// to it.
   String folderOf(String resolvedPath) => _pathContext.dirname(resolvedPath);
+
+  /// The command path to store for a file picked in a file dialog.
+  ///
+  /// A file inside the plugin folder becomes relative, so it keeps working
+  /// when the app folder moves; any other file stays absolute.
+  String commandPathFor(String selectedFilePath) {
+    final normalizedPath = _pathContext.normalize(selectedFilePath);
+    if (_pathContext.isWithin(pluginFolderPath, normalizedPath)) {
+      return _pathContext.relative(normalizedPath, from: pluginFolderPath);
+    }
+    return normalizedPath;
+  }
+
+  /// Where a file dialog for [commandPath] opens: the folder of the current
+  /// file, or the plugin folder when no file is set yet.
+  String folderToBrowseFrom(String commandPath) {
+    if (commandPath.trim().isEmpty) return pluginFolderPath;
+    return folderOf(resolve(commandPath));
+  }
 }

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/profiles/network_profile_validator.dart';
 import '../view_models/network_profile_editor_view_model.dart';
+import 'collapsible_section.dart';
 import 'ipv4_settings_fields.dart';
 
 /// Dialog to create or edit a profile, with inline validation.
@@ -13,11 +14,16 @@ class NetworkProfileEditorView extends StatefulWidget {
     super.key,
     required this.pluginFolderPath,
     required this.onOpenPluginFolder,
+    required this.onBrowseCommandFile,
   });
 
   /// Shown in the command section, where bare file names are looked up.
   final String pluginFolderPath;
   final VoidCallback onOpenPluginFolder;
+
+  /// Lets the user pick a file for a command; gets the current path and
+  /// returns the path to fill in, or `null` when cancelled.
+  final Future<String?> Function(String currentCommandPath) onBrowseCommandFile;
 
   @override
   State<NetworkProfileEditorView> createState() =>
@@ -36,12 +42,18 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
 
   final Map<int, _CommandControllers> _commandControllers = {};
 
+  final Set<_EditorSection> _expandedSections = {};
+
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(
-      text: context.read<NetworkProfileEditorViewModel>().name,
-    );
+    final viewModel = context.read<NetworkProfileEditorViewModel>();
+    _nameController = TextEditingController(text: viewModel.name);
+    _expandedSections.addAll([
+      _EditorSection.networkSettings,
+      if (viewModel.pingTargetDrafts.isNotEmpty) _EditorSection.pingTargets,
+      if (viewModel.commandDrafts.isNotEmpty) _EditorSection.commands,
+    ]);
   }
 
   @override
@@ -66,7 +78,7 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
     return AlertDialog(
       title: Text(viewModel.isNewProfile ? 'New profile' : 'Edit profile'),
       content: SizedBox(
-        width: 420,
+        width: 640,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -79,10 +91,27 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
                 errorText: viewModel.errorFor(NetworkProfileField.name),
                 autofocus: viewModel.isNewProfile,
               ),
-              const SizedBox(height: 16),
-              const Ipv4SettingsFields(),
-              ..._buildPingTargetSection(viewModel),
-              ..._buildCommandSection(viewModel),
+              _buildSection(
+                viewModel,
+                _EditorSection.networkSettings,
+                summary: _summarizeNetworkSettings(viewModel),
+                children: const [SizedBox(height: 8), Ipv4SettingsFields()],
+              ),
+              _buildSection(
+                viewModel,
+                _EditorSection.pingTargets,
+                summary: _countText(
+                  viewModel.pingTargetDrafts.length,
+                  'ping target',
+                ),
+                children: _buildPingTargetSection(viewModel),
+              ),
+              _buildSection(
+                viewModel,
+                _EditorSection.commands,
+                summary: _countText(viewModel.commandDrafts.length, 'command'),
+                children: _buildCommandSection(viewModel),
+              ),
             ],
           ),
         ),
@@ -100,6 +129,39 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
     );
   }
 
+  Widget _buildSection(
+    NetworkProfileEditorViewModel viewModel,
+    _EditorSection section, {
+    required String summary,
+    required List<Widget> children,
+  }) {
+    return CollapsibleSection(
+      title: section.title,
+      summary: summary,
+      isExpanded: _expandedSections.contains(section),
+      hasError: _hasError(viewModel, section),
+      onToggle: () => setState(() {
+        if (!_expandedSections.remove(section)) _expandedSections.add(section);
+      }),
+      children: children,
+    );
+  }
+
+  String _summarizeNetworkSettings(NetworkProfileEditorViewModel viewModel) {
+    if (!viewModel.usesStaticAddress) return 'DHCP';
+    final ipAddress = viewModel.ipAddress.trim();
+    if (ipAddress.isEmpty) return 'Static';
+    return 'Static · $ipAddress / ${viewModel.subnetMask.trim()}';
+  }
+
+  static String _countText(int count, String noun) =>
+      count == 1 ? '1 $noun' : '${count == 0 ? 'No' : count} ${noun}s';
+
+  bool _hasError(
+    NetworkProfileEditorViewModel viewModel,
+    _EditorSection section,
+  ) => section.fields.any((field) => viewModel.errorFor(field) != null);
+
   List<Widget> _buildPingTargetSection(
     NetworkProfileEditorViewModel viewModel,
   ) {
@@ -107,8 +169,6 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
     _disposeControllersOfRemovedDrafts(drafts);
     final pingTargetError = viewModel.errorFor(NetworkProfileField.pingTargets);
     return [
-      const SizedBox(height: 16),
-      Text('Ping targets', style: Theme.of(context).textTheme.titleSmall),
       Text(
         'Pinged automatically after applying this profile.',
         style: Theme.of(context).textTheme.bodySmall,
@@ -194,8 +254,6 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
     _disposeControllersOfRemovedCommands(drafts);
     final commandError = viewModel.errorFor(NetworkProfileField.commands);
     return [
-      const SizedBox(height: 16),
-      Text('Commands', style: theme.textTheme.titleSmall),
       Text(
         'Programs or scripts (.exe, .ps1, .bat, .cmd) run one after another '
         'once the ping targets were checked. A file name without a folder is '
@@ -286,6 +344,11 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
                 ),
               ),
               IconButton(
+                tooltip: 'Browse for a file',
+                icon: const Icon(Icons.folder_open_outlined),
+                onPressed: () => _browseCommandFile(viewModel, draft.id),
+              ),
+              IconButton(
                 tooltip: 'Remove command',
                 icon: const Icon(Icons.remove_circle_outline),
                 onPressed: () => viewModel.removeCommand(draft.id),
@@ -321,6 +384,17 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
         ],
       ),
     );
+  }
+
+  Future<void> _browseCommandFile(
+    NetworkProfileEditorViewModel viewModel,
+    int draftId,
+  ) async {
+    final pathController = _commandControllers[draftId]!.path;
+    final selectedPath = await widget.onBrowseCommandFile(pathController.text);
+    if (selectedPath == null || !mounted) return;
+    pathController.text = selectedPath;
+    viewModel.updateCommandPath(draftId, selectedPath);
   }
 
   void _disposeControllersOfRemovedCommands(List<CommandDraft> drafts) {
@@ -379,8 +453,33 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
 
   void _saveIfValid(NetworkProfileEditorViewModel viewModel) {
     final savedProfile = viewModel.trySave();
-    if (savedProfile != null) Navigator.pop(context, savedProfile);
+    if (savedProfile != null) {
+      Navigator.pop(context, savedProfile);
+      return;
+    }
+    // Errors in a folded section would otherwise go unnoticed.
+    setState(() {
+      _expandedSections.addAll(
+        _EditorSection.values.where((section) => _hasError(viewModel, section)),
+      );
+    });
   }
+}
+
+enum _EditorSection {
+  networkSettings('Network settings', [
+    NetworkProfileField.ipAddress,
+    NetworkProfileField.subnetMask,
+    NetworkProfileField.defaultGateway,
+    NetworkProfileField.dnsServers,
+  ]),
+  pingTargets('Ping targets', [NetworkProfileField.pingTargets]),
+  commands('Commands', [NetworkProfileField.commands]);
+
+  const _EditorSection(this.title, this.fields);
+
+  final String title;
+  final List<NetworkProfileField> fields;
 }
 
 /// The text fields of one command row, created once from its draft.

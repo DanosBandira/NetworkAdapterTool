@@ -40,4 +40,41 @@ void main() {
       r'C:\App\plugins\scripts',
     );
   });
+
+  group('commandPathFor', () {
+    test('makes a file in the plugin folder relative', () {
+      expect(resolver.commandPathFor(r'C:\App\plugins\tool.exe'), 'tool.exe');
+    });
+
+    test('keeps the subfolder of a file inside the plugin folder', () {
+      expect(
+        resolver.commandPathFor(r'C:\app\Plugins\scripts\map.ps1'),
+        r'scripts\map.ps1',
+      );
+    });
+
+    test('keeps a file outside the plugin folder absolute', () {
+      expect(
+        resolver.commandPathFor(r'C:\App\plugins-old\tool.exe'),
+        r'C:\App\plugins-old\tool.exe',
+      );
+    });
+  });
+
+  group('folderToBrowseFrom', () {
+    test('starts in the plugin folder when no file is set', () {
+      expect(resolver.folderToBrowseFrom('  '), r'C:\App\plugins');
+    });
+
+    test('starts in the folder of a bare file name', () {
+      expect(
+        resolver.folderToBrowseFrom(r'scripts\map.ps1'),
+        r'C:\App\plugins\scripts',
+      );
+    });
+
+    test('starts in the folder of an absolute file', () {
+      expect(resolver.folderToBrowseFrom(r'D:\Tools\x.exe'), r'D:\Tools');
+    });
+  });
 }

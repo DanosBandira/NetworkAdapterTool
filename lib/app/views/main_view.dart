@@ -854,11 +854,32 @@ Future<void> _openProfileEditor(
       child: NetworkProfileEditorView(
         pluginFolderPath: mainViewModel.pluginFolderPath,
         onOpenPluginFolder: mainViewModel.openPluginFolder,
+        onBrowseCommandFile: (currentCommandPath) =>
+            _browseCommandFile(mainViewModel, currentCommandPath),
       ),
     ),
   );
   if (savedProfile == null) return;
   await mainViewModel.saveProfile(savedProfile, originalProfile: profileToEdit);
+}
+
+const _commandFileTypes = [
+  XTypeGroup(
+    label: 'Programs and scripts',
+    extensions: ['exe', 'ps1', 'bat', 'cmd'],
+  ),
+];
+
+Future<String?> _browseCommandFile(
+  MainViewModel mainViewModel,
+  String currentCommandPath,
+) async {
+  final file = await openFile(
+    acceptedTypeGroups: _commandFileTypes,
+    initialDirectory: mainViewModel.folderToBrowseFrom(currentCommandPath),
+  );
+  if (file == null) return null;
+  return mainViewModel.commandPathFor(file.path);
 }
 
 Future<void> _confirmAndDeleteProfile(

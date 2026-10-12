@@ -175,6 +175,15 @@ class MainViewModel extends ChangeNotifier {
   /// Where a command path without a folder (e.g. `tool.exe`) is looked up.
   String get pluginFolderPath => _profileCommandRunner.pluginFolderPath;
 
+  /// The command path to fill in for a file picked with Browse: relative
+  /// inside the plugin folder, absolute elsewhere.
+  String commandPathFor(String selectedFilePath) =>
+      _profileCommandRunner.commandPathFor(selectedFilePath);
+
+  /// Where the Browse dialog for [commandPath] opens.
+  String folderToBrowseFrom(String commandPath) =>
+      _profileCommandRunner.folderToBrowseFrom(commandPath);
+
   /// `null` when the preset has not been applied yet.
   List<PresetLineStatus>? lineStatusesFor(String presetName) {
     final statuses = _lineStatusesByPresetName[presetName];

@@ -44,7 +44,9 @@ try {
 
     Push-Location $repositoryRoot
     try {
-        flutter build windows --release
+        # Icon tree shaking left a stale icon font in build\ (2026-10-12):
+        # icons added later were silently missing. The full font costs 1.6 MB.
+        flutter build windows --release --no-tree-shake-icons
         if ($LASTEXITCODE -ne 0) { throw "flutter build failed with exit code $LASTEXITCODE" }
     } finally {
         Pop-Location

@@ -39,6 +39,14 @@ class ProfileCommandRunner {
   String resolvedPathOf(ProfileCommand command) =>
       _pathResolver.resolve(command.path);
 
+  /// See [PluginPathResolver.commandPathFor].
+  String commandPathFor(String selectedFilePath) =>
+      _pathResolver.commandPathFor(selectedFilePath);
+
+  /// See [PluginPathResolver.folderToBrowseFrom].
+  String folderToBrowseFrom(String commandPath) =>
+      _pathResolver.folderToBrowseFrom(commandPath);
+
   /// Starts [command] right away; the returned run reports the outcome and
   /// can be stopped.
   ProfileCommandRun start(ProfileCommand command) {
