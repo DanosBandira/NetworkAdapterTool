@@ -435,11 +435,13 @@ prefix length to a dotted subnet mask. The reader sits behind
   and calls `markHelpAsShown()`, which saves the flag right away (not when
   the help closes), so quitting during the help does not bring it back.
 - Help (app bar, next to Import/Export) opens `HelpView`, a step-by-step
-  dialog (Back/Next/Done, clickable dots, "Step x of 6"). Each step shows an
+  dialog (Back/Next/Done, clickable dots, "Step x of 8"). Each step shows an
   example from `help_examples.dart` with an orange `HelpCallout` frame and
   label, plus a few points: 1 double-click to change an adapter (real
   `AdapterCard` + real `AdapterSettingsView`), 2 adapter colors, 3 profiles
-  + arrow button, 4 presets, 5 import/export, 6 good to know. Examples reuse
+  + arrow button, 4 ping targets and 5 commands (each: editor entry + card
+  with Ping/Run and results),
+  6 presets, 7 import/export, 8 good to know. Examples reuse
   the real widgets (`AdapterCard`, `ApplyArrowButton`, `CardColors`) with
   sample data inside `IgnorePointer`, so they keep matching the app; chosen
   over a coach-mark tour on the live screen, which breaks when there are no

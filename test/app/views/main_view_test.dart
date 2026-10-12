@@ -189,7 +189,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('How to use Network Adapter Tool'), findsOneWidget);
-    expect(find.text('Step 1 of 6'), findsOneWidget);
+    expect(find.text('Step 1 of 8'), findsOneWidget);
     expect(find.text('Change an adapter directly'), findsOneWidget);
     // The example shows the real adapter settings dialog.
     expect(find.text('Double-click to change'), findsOneWidget);
@@ -198,6 +198,8 @@ void main() {
     for (final stepTitle in [
       'Adapters (left)',
       'Profiles (top right)',
+      'Ping targets',
+      'Commands',
       'Presets (bottom right)',
       'Import and Export (top right)',
       'Good to know',
@@ -207,7 +209,7 @@ void main() {
       expect(find.text(stepTitle), findsOneWidget);
     }
 
-    expect(find.text('Step 6 of 6'), findsOneWidget);
+    expect(find.text('Step 8 of 8'), findsOneWidget);
     expect(find.text('Next'), findsNothing);
 
     await tester.tap(find.text('Back'));

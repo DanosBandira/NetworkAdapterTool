@@ -236,12 +236,41 @@ const _helpSteps = [
           'you choose the adapter when applying it.',
       'To apply: select an adapter and a profile, then click the orange '
           'arrow button at the bottom.',
-      'Ping targets (optional, e.g. "PLC 10.100.10.1") are pinged after '
-          'applying, or with the Ping button. Each one is tried for up to '
-          '10 seconds; the result shows under the profile.',
-      'Commands (optional) run a program or script (.exe, .ps1, .bat, .cmd) '
-          'after the ping targets, or with the Run button; Stop ends it. The '
-          'output shows at the bottom and under the profile.',
+    ],
+  ),
+  _HelpStep(
+    icon: Icons.network_ping,
+    title: 'Ping targets',
+    example: PingTargetsExample(),
+    points: [
+      'Ping targets check that the devices behind an adapter answer, e.g. '
+          '"PLC 10.100.10.1".',
+      'Add them in Edit profile, under Ping targets: an IP address and an '
+          'optional name.',
+      'They are pinged automatically after applying the profile, or any time '
+          'with the Ping button, without changing anything.',
+      'Each target is tried for up to 10 seconds, because devices need a few '
+          'seconds after switching. Green shows the reply time, red means no '
+          'reply.',
+    ],
+  ),
+  _HelpStep(
+    icon: Icons.terminal,
+    title: 'Commands',
+    example: CommandsExample(),
+    points: [
+      'A profile can run programs or scripts (.exe, .ps1, .bat, .cmd), e.g. '
+          'to map a network drive or set up a route to a machine.',
+      'Add them in Edit profile, under Commands: type the file or pick it '
+          'with the folder button, and type the arguments like on a command '
+          'line (use "quotes" around text with spaces).',
+      'A file without a folder, e.g. "tool.exe", is looked up in the '
+          '"plugins" folder next to the app; the Open button shows it.',
+      'With "Run after applying this profile" checked, the command runs '
+          'after applying, once the ping targets were checked. The Run button '
+          'runs all commands of the profile; Stop ends them.',
+      'The result shows under the profile and the last output lines at the '
+          'bottom; the page icon shows the full output.',
     ],
   ),
   _HelpStep(
@@ -284,9 +313,8 @@ const _helpSteps = [
       'The app needs administrator rights to change network settings, which '
           'is why Windows asks for permission when it starts. Commands run '
           'with the same rights.',
-      'A command file without a folder, e.g. "tool.exe", is looked up in the '
-          '"plugins" folder next to the app. Keep that folder when you update '
-          'the app.',
+      'Keep the "plugins" folder when you update the app: your own command '
+          'files may be in it.',
       r'Profiles and presets are stored in '
           r'%APPDATA%\NetworkAdapterTool\user_data.json.',
     ],

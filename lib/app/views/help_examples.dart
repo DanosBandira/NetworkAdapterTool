@@ -220,7 +220,211 @@ class ApplyProfileExample extends StatelessWidget {
   }
 }
 
-/// Step 4: a preset card with its lines and the Ping and Apply buttons.
+/// Step 4: ping targets as entered in the profile editor, and the profile
+/// card with the Ping button and a result per target.
+class PingTargetsExample extends StatelessWidget {
+  const PingTargetsExample({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 360,
+            child: HelpCallout(
+              label: '1. Add them in Edit profile',
+              child: _examplePingTargetEntries(),
+            ),
+          ),
+          const SizedBox(width: 24),
+          SizedBox(
+            width: 360,
+            child: HelpCallout(
+              label: '2. Ping, or apply the profile',
+              child: _profileCardWithPingResults(context),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _examplePingTargetEntries() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+      child: Column(
+        children: [
+          _examplePingTargetRow('PLC', '10.100.10.1'),
+          const SizedBox(height: 4),
+          _examplePingTargetRow('Printer', '10.100.10.55'),
+        ],
+      ),
+    );
+  }
+
+  Widget _examplePingTargetRow(String name, String ipAddress) {
+    return Row(
+      children: [
+        Expanded(flex: 2, child: _exampleField('Name (optional)', name)),
+        const SizedBox(width: 8),
+        Expanded(flex: 3, child: _exampleField('IP address', ipAddress)),
+        const Padding(
+          padding: EdgeInsets.all(8),
+          child: Icon(Icons.remove_circle_outline),
+        ),
+      ],
+    );
+  }
+
+  Widget _profileCardWithPingResults(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      color: CardColors.profile(theme.brightness, isSelected: false),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            title: const Text('Machine'),
+            subtitle: const Text(
+              '10.100.10.4 / 255.255.255.0 · 2 ping targets',
+            ),
+            trailing: OutlinedButton(
+              onPressed: () {},
+              child: const Text('Ping'),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Column(
+              children: [
+                const _ExamplePingResult('PLC · 10.100.10.1', '3 ms'),
+                _ExamplePingResult(
+                  'Printer · 10.100.10.55',
+                  'No reply',
+                  color: theme.colorScheme.error,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Step 5: a command as entered in the profile editor, and the profile card
+/// with the Run button and a result per command.
+class CommandsExample extends StatelessWidget {
+  const CommandsExample({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 360,
+            child: HelpCallout(
+              label: '1. Add it in Edit profile',
+              child: _exampleCommandEntry(context),
+            ),
+          ),
+          const SizedBox(width: 24),
+          SizedBox(
+            width: 360,
+            child: HelpCallout(
+              label: '2. Run it, or apply the profile',
+              child: _profileCardWithCommandResults(context),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _exampleCommandEntry(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 4, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: _exampleField('Name (optional)', 'Map drive'),
+              ),
+              const SizedBox(width: 8),
+              Expanded(flex: 3, child: _exampleField('File', 'map_drive.ps1')),
+              const Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(Icons.folder_open_outlined),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          _exampleField('Arguments (optional)', r'-Drive Z -Share \\nas\data'),
+          CheckboxListTile(
+            value: true,
+            onChanged: (_) {},
+            title: const Text('Run after applying this profile'),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _profileCardWithCommandResults(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      color: CardColors.profile(theme.brightness, isSelected: false),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            title: const Text('Machine'),
+            subtitle: const Text('10.100.10.4 / 255.255.255.0 · 2 commands'),
+            trailing: OutlinedButton(
+              onPressed: () {},
+              child: const Text('Run'),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+            child: Column(
+              children: [
+                _ExampleCommandResult(
+                  'Map drive',
+                  'Done · 0.4 s',
+                  color: _ExampleCommandResult.succeededColor,
+                ),
+                _ExampleCommandResult(
+                  'Start logger',
+                  'Exit code 2 · 3.1 s',
+                  color: theme.colorScheme.error,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Step 6: a preset card with its lines and the Ping and Apply buttons.
 class PresetExample extends StatelessWidget {
   const PresetExample({super.key});
 
@@ -259,7 +463,7 @@ class PresetExample extends StatelessWidget {
   }
 }
 
-/// Step 5: the Import and Export buttons of the app bar.
+/// Step 7: the Import and Export buttons of the app bar.
 class ImportExportExample extends StatelessWidget {
   const ImportExportExample({super.key});
 
@@ -334,12 +538,17 @@ class HelpCallout extends StatelessWidget {
 }
 
 class _ExamplePingResult extends StatelessWidget {
-  const _ExamplePingResult(this.target, this.result);
+  const _ExamplePingResult(
+    this.target,
+    this.result, {
+    this.color = _reachableColor,
+  });
 
   static const _reachableColor = Color(0xFF2E7D32);
 
   final String target;
   final String result;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -348,10 +557,40 @@ class _ExamplePingResult extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          const Icon(Icons.circle, size: 10, color: _reachableColor),
+          Icon(Icons.circle, size: 10, color: color),
           const SizedBox(width: 8),
           Expanded(child: Text(target, style: style)),
-          Text(result, style: style?.copyWith(color: _reachableColor)),
+          Text(result, style: style?.copyWith(color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExampleCommandResult extends StatelessWidget {
+  const _ExampleCommandResult(this.name, this.result, {required this.color});
+
+  static const succeededColor = Color(0xFF2E7D32);
+
+  final String name;
+  final String result;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodySmall;
+    return SizedBox(
+      height: 28,
+      child: Row(
+        children: [
+          Icon(Icons.circle, size: 10, color: color),
+          const SizedBox(width: 8),
+          Expanded(child: Text(name, style: style)),
+          Text(result, style: style?.copyWith(color: color)),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8),
+            child: Icon(Icons.article_outlined, size: 16),
+          ),
         ],
       ),
     );
@@ -364,5 +603,12 @@ Widget _exampleAdapterCard(NetworkAdapterViewModel adapter) {
     isSelected: false,
     onTap: () {},
     onDoubleTap: null,
+  );
+}
+
+Widget _exampleField(String label, String value) {
+  return TextFormField(
+    initialValue: value,
+    decoration: InputDecoration(labelText: label, isDense: true),
   );
 }
