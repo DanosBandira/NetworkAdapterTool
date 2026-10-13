@@ -151,11 +151,20 @@ h2 { font-size: 18px; font-weight: 500; margin: 40px 0 4px; }
     <div class="card"><div class="name">JsonNetwork&shy;ProfileRepository</div><div class="role">Versie-JSON, atomair schrijven</div></div>
     <div class="card"><div class="name">ProcessCommandRunner</div><div class="role">Process.run met argumentlijst</div></div>
     <div class="card"><div class="name">PingExeHostPinger</div><div class="role">ping.exe, antwoord = TTL= in uitvoer</div></div>
-    <div class="card"><div class="name">ProcessProgram&shy;Launcher</div><div class="role">Process.start, uitvoer bewaren, stoppen met taskkill /T</div></div>
+    <div class="card"><div class="name">ProcessProgram&shy;Launcher</div><div class="role">Process.start, uitvoer bewaren, stoppen met taskkill /T (Linux: setsid + kill op de procesgroep)</div></div>
     <div class="card"><div class="name">ExplorerFolderOpener</div><div class="role">Map aanmaken en openen in Verkenner</div></div>
     <div class="card"><div class="name">NetworkProfileValidator</div><div class="role">Fouten per veld, geen contract</div></div>
     <div class="card"><div class="name">NetworkPresetValidator</div><div class="role">Naam, regels, bestaande profielen</div></div>
     <div class="card"><div class="name">NetworkProfile&shy;Comparer</div><div class="role">Profiel vs. adapter: controle na toepassen en actief profiel op de kaart</div></div>
+  </div>
+  <div class="band-header"><span class="band-title">Linux-implementaties (voorbereid, nog niet op Linux getest)</span><span class="band-path">lib/core/adapters/ · platform/</span></div>
+  <div class="grid">
+    <div class="card"><div class="name">NmcliClient</div><div class="role">nmcli -t uitvoer: apparaten en verbindingen</div></div>
+    <div class="card"><div class="name">NmcliNetwork&shy;AdapterReader</div><div class="role">Apparaat + verbinding → adapter</div></div>
+    <div class="card"><div class="name">NmcliNetwork&shy;AdapterConfigurator</div><div class="role">connection modify + up</div></div>
+    <div class="card"><div class="name">LinuxPingHostPinger</div><div class="role">ping, antwoord = exitcode 0</div></div>
+    <div class="card"><div class="name">XdgFolderOpener</div><div class="role">Map openen met xdg-open</div></div>
+    <div class="card"><div class="name">HostPlatform</div><div class="role">Windows of Linux en de regels die verschillen</div></div>
   </div>
 </section>
 <div class="arrow">↓ werken met</div>

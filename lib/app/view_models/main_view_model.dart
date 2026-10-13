@@ -15,6 +15,7 @@ import '../../core/models/ping_target.dart';
 import '../../core/models/profile_command.dart';
 import '../../core/network_preset_applier.dart';
 import '../../core/network_profile_applier.dart';
+import '../../core/platform/host_platform.dart';
 import '../../core/profiles/network_profile_comparer.dart';
 import '../../core/profiles/network_profile_library_merger.dart';
 import '../../core/reachability/ping_targets_checker.dart';
@@ -38,6 +39,7 @@ class MainViewModel extends ChangeNotifier {
     required this._folderOpener,
     this._libraryMerger = const NetworkProfileLibraryMerger(),
     this._profileComparer = const NetworkProfileComparer(),
+    this.platform = HostPlatform.windows,
   });
 
   // Applied by the "Switch to DHCP" shortcut; never stored.
@@ -59,6 +61,9 @@ class MainViewModel extends ChangeNotifier {
   final FolderOpener _folderOpener;
   final NetworkProfileLibraryMerger _libraryMerger;
   final NetworkProfileComparer _profileComparer;
+
+  /// Decides the platform rules here and the wording in the views.
+  final HostPlatform platform;
 
   // Which saved profile was last applied to which adapter, in this session.
   // Needed for DHCP profiles: every DHCP adapter matches every DHCP profile,
@@ -891,15 +896,18 @@ class MainViewModel extends ChangeNotifier {
     String adapterName,
   ) {
     final ipAddress = profile.ipAddress;
-    if (profile.addressingMode != AddressingMode.staticIp ||
+    if (!platform.allowsAddressOnOneAdapterOnly ||
+        profile.addressingMode != AddressingMode.staticIp ||
         ipAddress == null) {
       return null;
     }
     final address = Ipv4Address.tryParse(ipAddress);
     if (address == null) return null;
     for (final adapter in _adapters) {
-      final isOtherAdapter =
-          adapter.name.toLowerCase() != adapterName.toLowerCase();
+      final isOtherAdapter = !platform.isSameAdapterName(
+        adapter.name,
+        adapterName,
+      );
       if (isOtherAdapter &&
           Ipv4Address.tryParse(adapter.adapter.ipAddress ?? '') == address) {
         return AddressConflict(
@@ -1242,7 +1250,7 @@ class MainViewModel extends ChangeNotifier {
           'it to DHCP (double-click its card), then apply again.',
         ),
       ProfileRejectedBySystem(:final error) => StatusMessage.error(
-        'Windows refused the setting (exit code ${error.exitCode}): '
+        'The system refused the setting (exit code ${error.exitCode}): '
         '${error.output}',
       ),
       ProfileNotActive(:final mismatches) => StatusMessage.error(
@@ -1366,9 +1374,8 @@ class MainViewModel extends ChangeNotifier {
         '${counted(library.presets.length, 'preset')}';
   }
 
-  // Windows treats adapter names case-insensitively.
   bool _isPresentAdapter(String adapterName) => _adapters.any(
-    (adapter) => adapter.name.toLowerCase() == adapterName.toLowerCase(),
+    (adapter) => platform.isSameAdapterName(adapter.name, adapterName),
   );
 
   NetworkProfile? _profileNamed(String? profileName) => _library.profiles

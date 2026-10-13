@@ -5,6 +5,7 @@ import 'package:network_adapter_tool/core/models/addressing_mode.dart';
 import 'package:network_adapter_tool/core/models/network_adapter.dart';
 import 'package:network_adapter_tool/core/models/network_profile.dart';
 import 'package:network_adapter_tool/core/network_profile_applier.dart';
+import 'package:network_adapter_tool/core/platform/host_platform.dart';
 import 'package:network_adapter_tool/core/profiles/network_profile_validator.dart';
 
 import '../fakes/fake_network_adapter_reader.dart';
@@ -162,6 +163,29 @@ void main() {
       expect(outcome, isA<ProfileNeedsConnectedAdapter>());
       expect(configurator.appliedProfiles, isEmpty);
       expect(reader.readCount, 1);
+    });
+
+    // NetworkManager stores static settings in the connection and uses them
+    // once the cable is plugged in.
+    test('applies a static profile on Linux without checking', () async {
+      final reader = FakeNetworkAdapterReader([
+        adapterSnapshot(status: NetworkAdapterStatus.disconnected),
+      ]);
+      final linuxApplier = NetworkProfileApplier(
+        validator: const NetworkProfileValidator(),
+        configurator: configurator,
+        reader: reader,
+        platform: HostPlatform.linux,
+        delayBetweenVerificationAttempts: Duration.zero,
+      );
+
+      final outcome = await linuxApplier.applyProfileToAdapter(
+        staticProfile,
+        adapterName,
+      );
+
+      expect(outcome, isA<ProfileApplied>());
+      expect(configurator.appliedProfiles, hasLength(1));
     });
 
     test(

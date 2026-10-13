@@ -3,6 +3,7 @@ import 'dart:io';
 
 import '../contracts/program_launcher.dart';
 import '../models/profile_command.dart';
+import '../platform/host_platform.dart';
 import 'plugin_path_resolver.dart';
 
 /// Runs one [ProfileCommand]: finds its file, starts it the way its file type
@@ -14,14 +15,14 @@ class ProfileCommandRunner {
   ProfileCommandRunner({
     required this._launcher,
     required this._pathResolver,
+    this._platform = HostPlatform.windows,
     Future<bool> Function(String filePath)? fileExists,
   }) : _fileExists = fileExists ?? _fileExistsOnDisk;
 
-  static const _powerShellExecutable = 'powershell.exe';
-
   // The default execution policy ("Restricted" on Windows clients) refuses
   // every script; the user picked this script explicitly, so it may run.
-  static const _powerShellArguments = [
+  static const _windowsPowerShell = [
+    'powershell.exe',
     '-NoProfile',
     '-NonInteractive',
     '-ExecutionPolicy',
@@ -29,8 +30,22 @@ class ProfileCommandRunner {
     '-File',
   ];
 
+  // PowerShell 7 ("pwsh") is the only PowerShell on Linux and has no
+  // execution policy there. It is not installed by default.
+  static const _linuxPowerShell = [
+    'pwsh',
+    '-NoProfile',
+    '-NonInteractive',
+    '-File',
+  ];
+
+  // bash rather than sh: most scripts written for Linux expect bash, and the
+  // file does not need to be marked executable this way.
+  static const _linuxShell = ['bash'];
+
   final ProgramLauncher _launcher;
   final PluginPathResolver _pathResolver;
+  final HostPlatform _platform;
   final Future<bool> Function(String filePath) _fileExists;
 
   String get pluginFolderPath => _pathResolver.pluginFolderPath;
@@ -64,7 +79,17 @@ class ProfileCommandRunner {
     if (fileType == null) {
       run._finish(
         CommandNotStarted(
-          '${command.path} is not an .exe, .ps1, .bat or .cmd file.',
+          '${command.path} is not an .exe, .ps1, .bat, .cmd or .sh file.',
+        ),
+      );
+      return;
+    }
+    final launchPrefix = _launchPrefixFor(fileType);
+    if (launchPrefix == null) {
+      run._finish(
+        CommandNotStarted(
+          '${fileType.extension} files cannot run on '
+          '${_platform == HostPlatform.linux ? 'Linux' : 'Windows'}.',
         ),
       );
       return;
@@ -77,19 +102,24 @@ class ProfileCommandRunner {
       run._finish(const CommandStopped(output: '', duration: Duration.zero));
       return;
     }
-    await _startAndWaitForExit(resolvedPath, fileType, command.arguments, run);
+    await _startAndWaitForExit(
+      resolvedPath,
+      launchPrefix,
+      command.arguments,
+      run,
+    );
   }
 
   Future<void> _startAndWaitForExit(
     String resolvedPath,
-    ProfileCommandFileType fileType,
+    List<String> launchPrefix,
     List<String> arguments,
     ProfileCommandRun run,
   ) async {
     final stopwatch = Stopwatch()..start();
     final RunningProgram program;
     try {
-      program = await _startProgram(resolvedPath, fileType, arguments);
+      program = await _startProgram(resolvedPath, launchPrefix, arguments);
     } on ProgramStartException catch (error) {
       run._finish(CommandNotStarted(error.reason));
       return;
@@ -107,25 +137,35 @@ class ProfileCommandRunner {
     );
   }
 
-  // .bat and .cmd files are started directly instead of through
-  // "cmd.exe /c": Dart then quotes the arguments for cmd.exe itself, while
-  // "cmd.exe /c" breaks on a quoted path followed by quoted arguments.
+  /// The program and arguments placed before the file, empty when the file
+  /// starts by itself; `null` when this platform cannot run the file type.
+  ///
+  /// .bat and .cmd files are started directly instead of through
+  /// "cmd.exe /c": Dart then quotes the arguments for cmd.exe itself, while
+  /// "cmd.exe /c" breaks on a quoted path followed by quoted arguments.
+  List<String>? _launchPrefixFor(ProfileCommandFileType fileType) {
+    return switch ((_platform, fileType)) {
+      (HostPlatform.windows, ProfileCommandFileType.powerShellScript) =>
+        _windowsPowerShell,
+      (HostPlatform.windows, ProfileCommandFileType.shellScript) => null,
+      (HostPlatform.windows, _) => const [],
+      (HostPlatform.linux, ProfileCommandFileType.powerShellScript) =>
+        _linuxPowerShell,
+      (HostPlatform.linux, ProfileCommandFileType.shellScript) => _linuxShell,
+      (HostPlatform.linux, _) => null,
+    };
+  }
+
   Future<RunningProgram> _startProgram(
     String resolvedPath,
-    ProfileCommandFileType fileType,
+    List<String> launchPrefix,
     List<String> arguments,
   ) {
     final workingDirectory = _pathResolver.folderOf(resolvedPath);
-    if (fileType == ProfileCommandFileType.powerShellScript) {
-      return _launcher.start(_powerShellExecutable, [
-        ..._powerShellArguments,
-        resolvedPath,
-        ...arguments,
-      ], workingDirectory: workingDirectory);
-    }
+    final commandLine = [...launchPrefix, resolvedPath, ...arguments];
     return _launcher.start(
-      resolvedPath,
-      arguments,
+      commandLine.first,
+      commandLine.skip(1).toList(),
       workingDirectory: workingDirectory,
     );
   }

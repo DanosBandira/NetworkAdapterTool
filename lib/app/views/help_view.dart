@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
 
+import '../../core/platform/host_platform.dart';
 import 'help_examples.dart';
+import 'platform_texts.dart';
 
 /// Help overlay that walks through the app in steps: per step an example of
 /// that part of the app (see help_examples.dart) and a few short points.
 /// Opened from the app bar; closes with the close button, Done on the last
 /// step, Esc or a click next to it.
 ///
-/// The steps live in [_helpSteps] so text and order can be changed without
+/// The steps live in [_helpStepsFor] so text and order can be changed without
 /// touching the layout.
 class HelpView extends StatefulWidget {
-  const HelpView({super.key});
+  const HelpView({super.key, this.platform = HostPlatform.windows});
+
+  /// Picks the platform notes (rights, storage folder, command files).
+  final HostPlatform platform;
 
   @override
   State<HelpView> createState() => _HelpViewState();
@@ -18,6 +23,8 @@ class HelpView extends StatefulWidget {
 
 class _HelpViewState extends State<HelpView> {
   int _stepIndex = 0;
+
+  late final _helpSteps = _helpStepsFor(PlatformTexts.of(widget.platform));
 
   _HelpStep get _step => _helpSteps[_stepIndex];
   bool get _isFirstStep => _stepIndex == 0;
@@ -209,7 +216,7 @@ class _HelpStep {
   final Widget? example;
 }
 
-const _helpSteps = [
+List<_HelpStep> _helpStepsFor(PlatformTexts platformTexts) => [
   _HelpStep(
     icon: Icons.edit_outlined,
     title: 'Change an adapter directly',
@@ -267,8 +274,9 @@ const _helpSteps = [
     title: 'Commands',
     example: CommandsExample(),
     points: [
-      'A profile can run programs or scripts (.exe, .ps1, .bat, .cmd), e.g. '
-          'to map a network drive or set up a route to a machine.',
+      'A profile can run programs or scripts '
+          '(${platformTexts.commandFileTypes}), e.g. to map a network drive '
+          'or set up a route to a machine.',
       'Add them in Edit profile, under Commands: type the file or pick it '
           'with the folder button, and type the arguments like on a command '
           'line (use "quotes" around text with spaces).',
@@ -315,22 +323,6 @@ const _helpSteps = [
   _HelpStep(
     icon: Icons.lightbulb_outline,
     title: 'Good to know',
-    points: [
-      'Windows can only switch an adapter from DHCP to a static IP while it '
-          'is connected. Plug in the cable first; the app tells you when this '
-          'is the case.',
-      'Switching to DHCP, or between static IPs, also works on an adapter '
-          'that is not connected.',
-      'An IP address can be set on one adapter only, also when that adapter '
-          'is not connected. If another adapter already has it, the app asks '
-          'whether to switch that adapter to DHCP first.',
-      'The app needs administrator rights to change network settings, which '
-          'is why Windows asks for permission when it starts. Commands run '
-          'with the same rights.',
-      'Keep the "plugins" folder when you update the app: your own command '
-          'files may be in it.',
-      r'Profiles and presets are stored in '
-          r'%APPDATA%\NetworkAdapterTool\user_data.json.',
-    ],
+    points: platformTexts.goodToKnow,
   ),
 ];

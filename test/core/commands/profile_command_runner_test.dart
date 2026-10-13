@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:network_adapter_tool/core/commands/plugin_path_resolver.dart';
 import 'package:network_adapter_tool/core/commands/profile_command_runner.dart';
 import 'package:network_adapter_tool/core/models/profile_command.dart';
+import 'package:network_adapter_tool/core/platform/host_platform.dart';
 import 'package:path/path.dart' as path;
 
 import '../../fakes/scripted_program_launcher.dart';
@@ -74,6 +75,73 @@ void main() {
       final program = launcher.launchedPrograms.single;
       expect(program.executable, r'C:\App\plugins\setup.cmd');
       expect(program.arguments, ['a b']);
+    });
+
+    test('does not start a shell script on Windows', () async {
+      final outcome = await runner
+          .start(const ProfileCommand(path: 'mount.sh'))
+          .outcome;
+
+      expect((outcome as CommandNotStarted).reason, contains('Windows'));
+      expect(launcher.launchedPrograms, isEmpty);
+    });
+  });
+
+  group('starting on Linux', () {
+    late ProfileCommandRunner linuxRunner;
+
+    setUp(() {
+      linuxRunner = ProfileCommandRunner(
+        launcher: launcher,
+        pathResolver: PluginPathResolver(
+          '/opt/network-adapter-tool/plugins',
+          pathContext: path.posix,
+        ),
+        platform: HostPlatform.linux,
+        fileExists: (_) async => true,
+      );
+    });
+
+    test('runs a shell script through bash', () async {
+      await linuxRunner
+          .start(
+            const ProfileCommand(path: 'mount.sh', arguments: ['//nas/data']),
+          )
+          .outcome;
+
+      final program = launcher.launchedPrograms.single;
+      expect(program.executable, 'bash');
+      expect(program.arguments, [
+        '/opt/network-adapter-tool/plugins/mount.sh',
+        '//nas/data',
+      ]);
+      expect(program.workingDirectory, '/opt/network-adapter-tool/plugins');
+    });
+
+    test('runs a PowerShell script through pwsh', () async {
+      await linuxRunner
+          .start(const ProfileCommand(path: '/home/me/route.ps1'))
+          .outcome;
+
+      final program = launcher.launchedPrograms.single;
+      expect(program.executable, 'pwsh');
+      expect(program.arguments, [
+        '-NoProfile',
+        '-NonInteractive',
+        '-File',
+        '/home/me/route.ps1',
+      ]);
+    });
+
+    test('does not start Windows file types', () async {
+      for (final windowsFile in ['tool.exe', 'setup.bat', 'setup.cmd']) {
+        final outcome = await linuxRunner
+            .start(ProfileCommand(path: windowsFile))
+            .outcome;
+
+        expect((outcome as CommandNotStarted).reason, contains('Linux'));
+      }
+      expect(launcher.launchedPrograms, isEmpty);
     });
   });
 

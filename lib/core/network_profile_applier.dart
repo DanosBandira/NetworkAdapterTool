@@ -4,6 +4,7 @@ import 'models/addressing_mode.dart';
 import 'models/ipv4_address.dart';
 import 'models/network_adapter.dart';
 import 'models/network_profile.dart';
+import 'platform/host_platform.dart';
 import 'profiles/network_profile_comparer.dart';
 import 'profiles/network_profile_validator.dart';
 
@@ -12,17 +13,19 @@ export 'profiles/network_profile_comparer.dart'
 
 /// Use case: apply a profile to an adapter and confirm it took effect.
 ///
-/// Steps: validate the profile, check that Windows can apply it to the
+/// Steps: validate the profile, check that the system can apply it to the
 /// adapter in its current state, let the configurator apply it, then re-read
 /// the adapter and compare. The re-read is needed because netsh can report
 /// success before Windows activates a setting, and because netsh's
-/// "DHCP already enabled" exit code also hides real errors.
+/// "DHCP already enabled" exit code also hides real errors. NetworkManager
+/// gets the same check, so both platforms report results the same way.
 class NetworkProfileApplier {
   const NetworkProfileApplier({
     required this._validator,
     required this._configurator,
     required this._reader,
     this._comparer = const NetworkProfileComparer(),
+    this._platform = HostPlatform.windows,
     this.verificationAttempts = 3,
     this.delayBetweenVerificationAttempts = const Duration(seconds: 1),
   });
@@ -36,6 +39,7 @@ class NetworkProfileApplier {
   final NetworkAdapterConfigurator _configurator;
   final NetworkAdapterReader _reader;
   final NetworkProfileComparer _comparer;
+  final HostPlatform _platform;
 
   Future<ApplyProfileOutcome> applyProfileToAdapter(
     NetworkProfile profile,
@@ -74,7 +78,10 @@ class NetworkProfileApplier {
     NetworkProfile profile,
     String adapterName,
   ) async {
-    if (profile.addressingMode != AddressingMode.staticIp) return false;
+    if (!_platform.needsConnectedAdapterForDhcpToStatic ||
+        profile.addressingMode != AddressingMode.staticIp) {
+      return false;
+    }
     try {
       final adapter = await _reader.readAdapterByName(adapterName);
       return adapter != null &&
@@ -95,15 +102,18 @@ class NetworkProfileApplier {
     NetworkConfigurationException error,
   ) async {
     final ipAddress = profile.ipAddress;
-    if (profile.addressingMode != AddressingMode.staticIp ||
+    if (!_platform.allowsAddressOnOneAdapterOnly ||
+        profile.addressingMode != AddressingMode.staticIp ||
         ipAddress == null) {
       return ProfileRejectedBySystem(error);
     }
     try {
       final adapters = await _reader.readAllAdapters();
       for (final adapter in adapters) {
-        final isOtherAdapter =
-            adapter.name.toLowerCase() != adapterName.toLowerCase();
+        final isOtherAdapter = !_platform.isSameAdapterName(
+          adapter.name,
+          adapterName,
+        );
         if (isOtherAdapter &&
             Ipv4Address.tryParse(adapter.ipAddress ?? '') ==
                 Ipv4Address.tryParse(ipAddress)) {
@@ -185,7 +195,7 @@ final class ProfileNeedsConnectedAdapter extends ApplyProfileOutcome {
   const ProfileNeedsConnectedAdapter();
 }
 
-/// Windows refused a setting; the adapter may be partly changed.
+/// The system refused a setting; the adapter may be partly changed.
 final class ProfileRejectedBySystem extends ApplyProfileOutcome {
   const ProfileRejectedBySystem(this.error);
 

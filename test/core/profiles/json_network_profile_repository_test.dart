@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:network_adapter_tool/core/platform/host_platform.dart';
 import 'package:network_adapter_tool/core/contracts/network_profile_repository.dart';
 import 'package:network_adapter_tool/core/models/addressing_mode.dart';
 import 'package:network_adapter_tool/core/models/network_preset.dart';
@@ -270,6 +271,46 @@ void main() {
 
     test('when the file was written by a newer app version', () async {
       await expectLoadingFails('{"formatVersion":5,"profiles":[]}');
+    });
+  });
+
+  group('user data file per platform', () {
+    test('lives in roaming AppData on Windows', () {
+      expect(
+        JsonNetworkProfileRepository.userDataFilePath(HostPlatform.windows, {
+          'APPDATA': r'C:\Users\me\AppData\Roaming',
+        }),
+        r'C:\Users\me\AppData\Roaming\NetworkAdapterTool\user_data.json',
+      );
+    });
+
+    test('lives in ~/.config on Linux', () {
+      expect(
+        JsonNetworkProfileRepository.userDataFilePath(HostPlatform.linux, {
+          'HOME': '/home/me',
+        }),
+        '/home/me/.config/network-adapter-tool/user_data.json',
+      );
+    });
+
+    test('follows XDG_CONFIG_HOME on Linux', () {
+      expect(
+        JsonNetworkProfileRepository.userDataFilePath(HostPlatform.linux, {
+          'HOME': '/home/me',
+          'XDG_CONFIG_HOME': '/data/config',
+        }),
+        '/data/config/network-adapter-tool/user_data.json',
+      );
+    });
+
+    test('refuses when the folder is not known', () {
+      expect(
+        () => JsonNetworkProfileRepository.userDataFilePath(
+          HostPlatform.linux,
+          const {},
+        ),
+        throwsA(isA<NetworkProfileStorageException>()),
+      );
     });
   });
 }

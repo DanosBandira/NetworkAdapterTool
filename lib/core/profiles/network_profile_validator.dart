@@ -252,7 +252,8 @@ class NetworkProfileValidator {
       } else if (fileType == null) {
         yield NetworkProfileValidationError(
           NetworkProfileField.commands,
-          'Command "${command.path}" must be an .exe, .ps1, .bat or .cmd file.',
+          'Command "${command.path}" must be an .exe, .ps1, .bat, .cmd or '
+          '.sh file.',
         );
       } else if (fileType.runsThroughCmd &&
           command.arguments.any(_batchFileSpecialCharacters.hasMatch)) {

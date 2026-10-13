@@ -5,6 +5,7 @@ import '../../core/profiles/network_profile_validator.dart';
 import '../view_models/network_profile_editor_view_model.dart';
 import 'collapsible_section.dart';
 import 'ipv4_settings_fields.dart';
+import 'platform_texts.dart';
 
 /// Dialog to create or edit a profile, with inline validation.
 ///
@@ -12,10 +13,14 @@ import 'ipv4_settings_fields.dart';
 class NetworkProfileEditorView extends StatefulWidget {
   const NetworkProfileEditorView({
     super.key,
+    required this.platformTexts,
     required this.pluginFolderPath,
     required this.onOpenPluginFolder,
     required this.onBrowseCommandFile,
   });
+
+  /// Which command files this platform runs, for the command section.
+  final PlatformTexts platformTexts;
 
   /// Shown in the command section, where bare file names are looked up.
   final String pluginFolderPath;
@@ -255,9 +260,9 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
     final commandError = viewModel.errorFor(NetworkProfileField.commands);
     return [
       Text(
-        'Programs or scripts (.exe, .ps1, .bat, .cmd) run one after another '
-        'once the ping targets were checked. A file name without a folder is '
-        'looked up in the plugin folder:',
+        'Programs or scripts (${widget.platformTexts.commandFileTypes}) run '
+        'one after another once the ping targets were checked. A file name '
+        'without a folder is looked up in the plugin folder:',
         style: theme.textTheme.bodySmall,
       ),
       Row(
@@ -336,9 +341,9 @@ class _NetworkProfileEditorViewState extends State<NetworkProfileEditorView> {
                   controller: controllers.path,
                   onChanged: (path) =>
                       viewModel.updateCommandPath(draft.id, path),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'File',
-                    hintText: r'map_drive.ps1 or C:\Tools\tool.exe',
+                    hintText: widget.platformTexts.commandFileHint,
                     isDense: true,
                   ),
                 ),

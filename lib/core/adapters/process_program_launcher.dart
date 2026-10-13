@@ -2,12 +2,19 @@ import 'dart:async';
 import 'dart:io';
 
 import '../contracts/program_launcher.dart';
+import '../platform/host_platform.dart';
 
 /// Starts user programs as child processes via `dart:io`.
 ///
 /// Output is decoded with the system code page, like netsh and ping output.
 class ProcessProgramLauncher implements ProgramLauncher {
-  const ProcessProgramLauncher();
+  const ProcessProgramLauncher({this._platform = HostPlatform.windows});
+
+  // setsid runs the program as the leader of a new process group, so Stop
+  // can end the group: a script and everything it started.
+  static const _newProcessGroupExecutable = 'setsid';
+
+  final HostPlatform _platform;
 
   @override
   Future<RunningProgram> start(
@@ -15,25 +22,57 @@ class ProcessProgramLauncher implements ProgramLauncher {
     List<String> arguments, {
     required String workingDirectory,
   }) async {
+    final startsInOwnProcessGroup = _platform == HostPlatform.linux;
     try {
-      final process = await Process.start(
-        executable,
-        arguments,
-        workingDirectory: workingDirectory,
-      );
-      return _RunningProcess(process);
+      final process = startsInOwnProcessGroup
+          ? await Process.start(_newProcessGroupExecutable, [
+              executable,
+              ...arguments,
+            ], workingDirectory: workingDirectory)
+          : await Process.start(
+              executable,
+              arguments,
+              workingDirectory: workingDirectory,
+            );
+      return startsInOwnProcessGroup
+          ? _RunningProcess(process, _stopProcessGroup)
+          : _RunningProcess(process, _stopProcessTree);
     } on ProcessException catch (error) {
       throw ProgramStartException(
         'Could not start $executable: ${error.message.trim()}',
       );
     }
   }
+
+  // Process.kill only ends the process itself; a script's child programs
+  // would keep running. taskkill /T ends the whole tree.
+  static Future<void> _stopProcessTree(Process process) async {
+    try {
+      await Process.run('taskkill.exe', ['/PID', '${process.pid}', '/T', '/F']);
+    } on ProcessException {
+      // Fall through to the plain kill below.
+    }
+    process.kill();
+  }
+
+  // The process started by setsid leads its group, so the group id is its
+  // pid; "kill -- -pid" signals the whole group.
+  static Future<void> _stopProcessGroup(Process process) async {
+    try {
+      await Process.run('kill', ['-KILL', '--', '-${process.pid}']);
+    } on ProcessException {
+      // Fall through to the plain kill below.
+    }
+    process.kill(ProcessSignal.sigkill);
+  }
 }
 
 class _RunningProcess implements RunningProgram {
-  _RunningProcess(this._process) {
+  _RunningProcess(this._process, this._stopProcess) {
     _result = _collectResult();
   }
+
+  final Future<void> Function(Process process) _stopProcess;
 
   // Enough for the status line and the output dialog; a chatty program that
   // runs for hours must not grow the app's memory without bound.
@@ -47,22 +86,8 @@ class _RunningProcess implements RunningProgram {
   @override
   Future<ProgramResult> get result => _result;
 
-  // Process.kill only ends the process itself; a script's child programs
-  // would keep running. taskkill /T ends the whole tree.
   @override
-  Future<void> stop() async {
-    try {
-      await Process.run('taskkill.exe', [
-        '/PID',
-        '${_process.pid}',
-        '/T',
-        '/F',
-      ]);
-    } on ProcessException {
-      // Fall through to the plain kill below.
-    }
-    _process.kill();
-  }
+  Future<void> stop() => _stopProcess(_process);
 
   Future<ProgramResult> _collectResult() async {
     await Future.wait([

@@ -1,7 +1,8 @@
 # Network Adapter Tool
 
-Windows desktop tool to switch network adapters between DHCP and static IP
-settings using saved profiles.
+Desktop tool to switch network adapters between DHCP and static IP settings
+using saved profiles. Built for Windows; a Linux version is prepared (see
+"Linux" below) but has not run on a Linux machine yet.
 
 ## Before writing code
 
@@ -18,7 +19,8 @@ interfaces (use `abstract interface class`).
 
 ## Stack
 
-- Flutter (stable) with Dart 3, Windows desktop target only
+- Flutter (stable) with Dart 3, Windows desktop target; Linux desktop
+  target prepared (`linux/`, untested on Linux)
 - `provider` + `ChangeNotifier` view models (MVVM)
 - Manual constructor injection; composition root in `lib/main.dart`
 - `dart:convert` for profile storage (JSON)
@@ -36,6 +38,8 @@ Single Flutter project in the repository root. `lib/core/` must never import
 ```
 pubspec.yaml
 windows/runner/CMakeLists.txt                  (/MANIFESTUAC requireAdministrator)
+linux/                                         (GTK runner; CMake installs plugins/)
+.gitattributes                                 (*.sh stays LF for bash)
 lib/
 ├── main.dart                                  (composition root)
 ├── core/
@@ -57,13 +61,20 @@ lib/
 │   │   ├── command_runner.dart
 │   │   ├── program_launcher.dart              (start, wait for or stop a user program)
 │   │   └── folder_opener.dart
+│   ├── platform/
+│   │   └── host_platform.dart                 (windows | linux + the rules that differ)
 │   ├── adapters/
-│   │   ├── powershell_network_adapter_reader.dart
-│   │   ├── netsh_network_adapter_configurator.dart
-│   │   ├── ping_exe_host_pinger.dart
+│   │   ├── powershell_network_adapter_reader.dart   (Windows)
+│   │   ├── netsh_network_adapter_configurator.dart  (Windows)
+│   │   ├── ping_exe_host_pinger.dart                (Windows)
+│   │   ├── explorer_folder_opener.dart              (Windows)
+│   │   ├── nmcli_client.dart                        (Linux: terse nmcli output)
+│   │   ├── nmcli_network_adapter_reader.dart        (Linux)
+│   │   ├── nmcli_network_adapter_configurator.dart  (Linux)
+│   │   ├── linux_ping_host_pinger.dart              (Linux)
+│   │   ├── xdg_folder_opener.dart                   (Linux)
 │   │   ├── process_command_runner.dart
-│   │   ├── process_program_launcher.dart
-│   │   └── explorer_folder_opener.dart
+│   │   └── process_program_launcher.dart            (taskkill /T or setsid + kill group)
 │   ├── commands/
 │   │   ├── command_line_arguments.dart        (arguments text ↔ list, quotes group)
 │   │   ├── plugin_path_resolver.dart          (bare name → plugins folder next to exe)
@@ -99,7 +110,8 @@ lib/
         ├── label_and_result.dart              (row text: label left, result right)
         ├── left_arrow_border.dart
         ├── network_profile_editor_view.dart
-        └── network_preset_editor_view.dart
+        ├── network_preset_editor_view.dart
+        └── platform_texts.dart                (command file types, rights, help notes)
 test/
 ├── core/ · app/                               (mirror lib/)
 └── fakes/                                     (fake reader/configurator/runner/repository)
@@ -109,6 +121,7 @@ icon.svg                                       (app icon source)
 tool/svg_to_ico.py                             (icon.svg → app_icon.ico)
 tool/build_debug.ps1                           (debug build; -Run, -NoPause)
 tool/build_release.ps1                         (release build + dist\NetworkAdapterTool.zip; -Run, -NoPause)
+tool/build_linux.sh                            (Linux release + dist/NetworkAdapterTool-linux.tar.gz; --run, --no-pause)
 ```
 
 ## Responsibilities
@@ -118,7 +131,7 @@ tool/build_release.ps1                         (release build + dist\NetworkAdap
 | `PowerShellNetworkAdapterReader` | Read adapters and their current IPv4 settings via a PowerShell script that returns JSON | `CommandRunner` |
 | `NetshNetworkAdapterConfigurator` | Translate a profile into netsh commands | `CommandRunner` |
 | `ProcessCommandRunner` | Start an executable with an argument list, return exit code and output | – |
-| `JsonNetworkProfileRepository` | Load/save the `NetworkProfileLibrary` (profiles + presets) in `%APPDATA%\NetworkAdapterTool\user_data.json`; no fallback to older file names or locations (user's choice: keep it clean) | – |
+| `JsonNetworkProfileRepository` | Load/save the `NetworkProfileLibrary` (profiles + presets) in `%APPDATA%\NetworkAdapterTool\user_data.json` (Linux: `$XDG_CONFIG_HOME` or `~/.config` + `/network-adapter-tool/user_data.json`); no fallback to older file names or locations (user's choice: keep it clean) | – |
 | `NetworkPresetValidator` | Preset name unique, ≥1 line, lines complete, adapter once, profile exists | – |
 | `NetworkPresetApplier` | Apply preset lines one by one via `NetworkProfileApplier`; a failing line does not stop the rest | profile applier |
 | `NetworkProfileValidator` | Validate IP, subnet mask, gateway in same subnet, DNS addresses | – |
@@ -128,8 +141,14 @@ tool/build_release.ps1                         (release build + dist\NetworkAdap
 | `PingTargetsChecker` | Ping all targets concurrently, retry each until it answers or 10 s pass, emit results as they resolve | `HostPinger` |
 | `PluginPathResolver` | Absolute command path stays; anything else is looked up in the plugins folder next to the exe | – |
 | `ProfileCommandRunner` | Run one profile command: resolve, check the file exists, start by file type, report `ProfileCommandOutcome`; stoppable, no time limit | `ProgramLauncher`, `PluginPathResolver` |
-| `ProcessProgramLauncher` | `Process.start` with working folder; collect stdout+stderr (last 20 000 chars); stop with `taskkill /T /F` | – |
+| `ProcessProgramLauncher` | `Process.start` with working folder; collect stdout+stderr (last 20 000 chars); stop with `taskkill /T /F` (Linux: start via `setsid`, stop with `kill -KILL -- -pid` on the process group) | – |
 | `ExplorerFolderOpener` | Create a folder and open it in Explorer | `CommandRunner` |
+| `HostPlatform` | Windows or Linux and the rules that differ: address on one adapter only, DHCP→static needs a connected adapter, adapter names ignore case (all Windows only) | – |
+| `NmcliClient` | Run nmcli in terse mode; parse devices (`device show`) and ethernet/wifi connections with their IPv4 settings; exit 8 / missing nmcli become clear messages | `CommandRunner` |
+| `NmcliNetworkAdapterReader` | Linux adapters: wired and wireless devices joined with their connection (active one, else bound by interface name) | `NmcliClient` |
+| `NmcliNetworkAdapterConfigurator` | Linux: one `connection modify` with all IPv4 settings, then `connection up` unless the device is unavailable (no cable); creates a connection for a wired device without one | `NmcliClient` |
+| `LinuxPingHostPinger` | `ping -n -c 1 -W <s>`; exit code 0 = reply | `CommandRunner` |
+| `XdgFolderOpener` | Create a folder and open it with `xdg-open` | `CommandRunner` |
 | View models | UI state and commands only, no network logic | applier, repository, reader, ping checker, command runner, folder opener |
 
 ## Model
@@ -506,6 +525,86 @@ prefix length to a dotted subnet mask. The reader sits behind
   adapters/profiles or the list is filtered. Keep `_helpSteps` in sync when
   behavior visible to the user changes; the user edited the wording.
 
+## Linux
+
+Prepared on 2026-10-13 on the user's request ("prepare it, I can only test
+on Windows for now"). Everything is unit tested with captured-style samples,
+but nothing has run on Linux yet; see "To verify on Linux" below.
+
+| Contract | Windows | Linux |
+|---|---|---|
+| `NetworkAdapterReader` | PowerShell `Get-Net*` | `nmcli -t` device + connection |
+| `NetworkAdapterConfigurator` | `netsh` | `nmcli connection modify` + `up` |
+| `HostPinger` | `ping.exe`, reply = `TTL=` | `ping`, reply = exit code 0 |
+| `FolderOpener` | `explorer.exe` | `xdg-open` |
+| Storage | `%APPDATA%\NetworkAdapterTool` | `$XDG_CONFIG_HOME` or `~/.config` + `/network-adapter-tool` |
+| Commands | `.exe`, `.bat`, `.cmd` direct; `.ps1` via `powershell.exe` | `.sh` via `bash`; `.ps1` via `pwsh` |
+| Stop a command | `taskkill /T /F` | `setsid` start, `kill -KILL -- -pid` |
+| Rights | whole app as administrator | app as the user; NetworkManager asks via polkit when needed |
+
+- `main.dart` picks the implementations with `HostPlatform.current`
+  (`_SystemTools`). Core classes take a `HostPlatform` (default Windows, so
+  existing tests and the Windows build are unchanged); views get wording from
+  `PlatformTexts` (command file types, "with administrator rights" vs "with
+  your user rights", the "Good to know" help step).
+- `nmcli`, not `ip`: `ip` only changes the live kernel state (gone after a
+  reboot or replug), does no DHCP or DNS, and NetworkManager overwrites it.
+  A device is shown with the connection active on it, else one bound to it
+  by `connection.interface-name`. A connected device shows its live address,
+  a disconnected one the address stored in the connection (like Windows).
+  Only `ethernet` and `wifi` devices are listed.
+- One `nmcli connection modify uuid <uuid>` sets `ipv4.method`,
+  `ipv4.addresses`, `ipv4.gateway`, `ipv4.dns` and `ipv4.ignore-auto-dns` at
+  once ("manual" alone is refused without an address); DHCP clears the
+  static values. Then `nmcli --wait 30 connection up uuid <uuid> ifname <dev>`,
+  skipped when the device state is ≤ 20 (unavailable, i.e. no cable): the
+  settings stay in the connection and NetworkManager uses them when the cable
+  is plugged in.
+- A wired device without a connection gets `nmcli connection add type
+  ethernet ifname <dev> con-name <dev>`; a Wi-Fi device without one is
+  refused with a message (needs SSID and password: connect once in the system
+  settings).
+- Platform rules off on Linux: `ProfileNeedsConnectedAdapter`, the
+  "address already in use" check and popup (Linux allows an address twice),
+  case-insensitive adapter names.
+- Every command file type stays valid in a profile on both platforms (profiles
+  are shared); `ProfileCommandRunner` returns `CommandNotStarted` ("… files
+  cannot run on Linux") for `.exe/.bat/.cmd` on Linux and `.sh` on Windows.
+- The app runs as the normal user on Linux: a GUI as root fails under Wayland
+  and is unsafe. NetworkManager allows the logged-in user to change
+  connections or asks for the password via polkit; commands needing root use
+  `pkexec` inside the script.
+- `linux/` was generated with `flutter create --platforms=linux` (the
+  generated counter test was deleted, `.metadata` keeps the Windows entry).
+  `APPLICATION_ID` is `io.github.danosbandira.network_adapter_tool`; the
+  window title and maximizing match Windows. `linux/CMakeLists.txt` installs
+  `plugins/` like Windows, but the Linux bundle is emptied on every build, so
+  own plugins belong in the repository folder.
+- `tool/build_linux.sh` builds on Linux (not from Windows), packs
+  `build/linux/x64/release/bundle` into `dist/NetworkAdapterTool-linux.tar.gz`
+  and asks to start the app. Build needs clang, cmake, ninja-build,
+  pkg-config, libgtk-3-dev; the app needs NetworkManager, iputils ping,
+  xdg-utils, util-linux (setsid), bash, and pwsh for `.ps1`.
+
+### To verify on Linux
+
+Samples in `test/core/adapters/nmcli_samples.dart` and the Linux ping test
+were written from the manuals, not captured; replace them with real output.
+
+1. `nmcli -t -f GENERAL.DEVICE,... device show` output: blank lines between
+   devices, `IP4.ADDRESS[1]` keys, "--" or empty for missing values, the
+   number in `GENERAL.STATE`.
+2. `nmcli -t -f NAME,UUID,TYPE,DEVICE connection show`: type names
+   (`802-3-ethernet` vs `ethernet`), escaping of `:` in names.
+3. Apply static and DHCP on a connected and on a cable-less device; check
+   the verification passes (DHCP without a server: does `connection up`
+   fail after the wait, and how does the adapter look then?).
+4. Whether NetworkManager asks for a password (polkit) and how a refusal
+   looks (exit code, message).
+5. `.sh` and `.ps1` commands, Stop ending child processes (setsid), the
+   plugins folder next to the executable, `xdg-open`.
+6. Window: maximized start, icon (no `.desktop` file or app icon yet).
+
 ## Build order
 
 All done:
@@ -538,57 +637,6 @@ Not planned yet; pick up only when the user asks.
 - Open question: which adapters to list. The user's machine has 10, most
   virtual (Hyper-V, VPN, TAP, Bluetooth). Options: all, physical only
   (`Get-NetAdapter -Physical`, preferred), or a user-selectable list.
-
-### Linux version
-
-UI, view models, validation, presets, appliers, `PingTargetsChecker`,
-`ProcessCommandRunner`, the library transfer and both packages (`provider`,
-`file_selector`) are platform independent (checked 2026-10-09, roughly
-80–85% of the code). Only the contract implementations and a few spots below
-are Windows specific. A Linux build would need:
-
-| Contract | Windows (now) | Linux |
-|---|---|---|
-| `NetworkAdapterReader` | PowerShell `Get-Net*` | `ip -j addr` + `ip -j route` (JSON) or `nmcli -t` |
-| `NetworkAdapterConfigurator` | `netsh` | `nmcli` (NetworkManager) |
-| `HostPinger` | `ping.exe`, reply = `TTL=` | `ping -c 1 -W 1`; exit code 0 only on a real reply |
-| Storage folder | `%APPDATA%\NetworkAdapterTool` | `$XDG_CONFIG_HOME` or `~/.config/network-adapter-tool` |
-| Elevation | `requireAdministrator` manifest | polkit (`nmcli` often needs no root for a local user), else `pkexec` |
-
-Configurator: `nmcli`, not `ip`. `ip` only changes the live kernel state (lost
-on reboot or replug), does no DHCP and no DNS, and NetworkManager overwrites
-it when running. `nmcli` covers static/DHCP, gateway and DNS in one tool and
-persists, like netsh:
-
-```
-nmcli connection modify <connection> ipv4.method manual ipv4.addresses <ip>/<prefix> ipv4.gateway <gw> ipv4.dns "<dns1> <dns2>"
-nmcli connection modify <connection> ipv4.method auto ipv4.addresses "" ipv4.gateway "" ipv4.dns ""
-nmcli connection up <connection>
-```
-
-`nmcli` works on connections, not devices: find the connection for the
-adapter (`nmcli -t -f NAME,DEVICE connection show`) and create one when none
-exists. Without a running NetworkManager (servers, minimal installs) show a
-clear message instead of failing silently.
-
-Other changes:
-
-- `main.dart` picks the implementations per `Platform.isLinux` /
-  `Platform.isWindows`.
-- `JsonNetworkProfileRepository.inRoamingAppData` throws without `APPDATA`
-  and joins the path with `\\`; needs a per-platform storage folder.
-- UI texts mention Windows, `%APPDATA%` and the UAC prompt
-  (`main_view_model.dart` outcome messages, `help_view.dart` step 6).
-- `ProfileNeedsConnectedAdapter` is a Windows quirk; under NetworkManager
-  DHCP-to-static on a disconnected adapter probably works, so make that check
-  per platform (re-verify first).
-- Adapter names compare case-insensitively (`_isPresentAdapter`); Linux
-  names are case-sensitive.
-- Add the runner with `flutter create --platforms=linux .`; build on Linux
-  (WSL or CI), not from Windows.
-
-Re-verify the Windows-specific findings (disconnected DHCP adapters, exit
-codes, apply-then-verify retries) for `nmcli`.
 
 ### Start with Windows
 

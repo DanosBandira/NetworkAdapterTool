@@ -307,7 +307,7 @@ void main() {
         dhcpProfileWithCommands(const [ProfileCommand(path: 'notes.txt')]),
       );
 
-      expect(errors.single.message, contains('.exe, .ps1, .bat or .cmd'));
+      expect(errors.single.message, contains('.exe, .ps1, .bat, .cmd or .sh'));
     });
 
     test('rejects cmd.exe special characters in batch file arguments', () {

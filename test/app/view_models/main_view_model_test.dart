@@ -14,6 +14,7 @@ import 'package:network_adapter_tool/core/models/ping_target.dart';
 import 'package:network_adapter_tool/core/models/profile_command.dart';
 import 'package:network_adapter_tool/core/network_preset_applier.dart';
 import 'package:network_adapter_tool/core/network_profile_applier.dart';
+import 'package:network_adapter_tool/core/platform/host_platform.dart';
 import 'package:network_adapter_tool/core/profiles/network_profile_validator.dart';
 import 'package:network_adapter_tool/core/reachability/ping_targets_checker.dart';
 
@@ -769,6 +770,43 @@ void main() {
         expect(viewModel.lineStatusesFor(machinePreset.name), isNull);
         expect(viewModel.canApplyPresets, isTrue);
       });
+    });
+
+    test('does not ask on Linux, which allows an address twice', () async {
+      final reader = readerWithConflict();
+      final applier = NetworkProfileApplier(
+        validator: const NetworkProfileValidator(),
+        configurator: configurator,
+        reader: reader,
+        verificationAttempts: 1,
+        platform: HostPlatform.linux,
+      );
+      final viewModel = MainViewModel(
+        reader: reader,
+        repository: repository,
+        applier: applier,
+        presetApplier: NetworkPresetApplier(applier),
+        pingTargetsChecker: PingTargetsChecker(pinger),
+        libraryTransfer: libraryTransfer,
+        profileCommandRunner: ProfileCommandRunner(
+          launcher: programLauncher,
+          pathResolver: PluginPathResolver('/opt/app/plugins'),
+        ),
+        folderOpener: folderOpener,
+        platform: HostPlatform.linux,
+      );
+      await viewModel.initialize();
+      viewModel
+        ..selectAdapter('Ethernet')
+        ..selectProfile(machineProfile.name);
+      var wasAsked = false;
+
+      await viewModel.applySelectedProfileToSelectedAdapter(
+        confirmFreeingAddress: (_) async => wasAsked = true,
+      );
+
+      expect(wasAsked, isFalse);
+      expect(configurator.appliedProfiles.single.$2, 'Ethernet');
     });
 
     test('applies directly when nobody can be asked', () async {

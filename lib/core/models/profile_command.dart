@@ -75,11 +75,16 @@ class ProfileCommand {
 }
 
 /// The kinds of files a [ProfileCommand] can run, recognized by extension.
+///
+/// All are valid in a profile on every platform, since profiles are shared
+/// between PCs; `ProfileCommandRunner` reports the ones a platform cannot
+/// start (e.g. a `.bat` on Linux).
 enum ProfileCommandFileType {
   executable('.exe'),
   powerShellScript('.ps1'),
   batchFile('.bat'),
-  commandScript('.cmd');
+  commandScript('.cmd'),
+  shellScript('.sh');
 
   const ProfileCommandFileType(this.extension);
 

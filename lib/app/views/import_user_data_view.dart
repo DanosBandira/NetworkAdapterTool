@@ -24,10 +24,14 @@ class ImportUserDataView extends StatefulWidget {
     super.key,
     required this.libraryImport,
     required this.localAdapterNames,
+    required this.commandRights,
   });
 
   final LibraryImport libraryImport;
   final List<String> localAdapterNames;
+
+  /// "with administrator rights" on Windows, for the command warning.
+  final String commandRights;
 
   @override
   State<ImportUserDataView> createState() => _ImportUserDataViewState();
@@ -110,8 +114,8 @@ class _ImportUserDataViewState extends State<ImportUserDataView> {
     );
   }
 
-  // Commands run with the app's administrator rights, so a file from someone
-  // else could run anything on this PC. Only a warning: the user decided
+  // Commands run with the app's rights (administrator on Windows), so a file
+  // from someone else could run anything on this PC. Only a warning: the user decided
   // against blocking imported commands.
   List<Widget> _buildCommandWarning(ThemeData theme) {
     final errorColor = theme.colorScheme.error;
@@ -142,7 +146,7 @@ class _ImportUserDataViewState extends State<ImportUserDataView> {
             ),
             const SizedBox(height: 4),
             Text(
-              'They run programs on this PC with administrator rights. Only '
+              'They run programs on this PC ${widget.commandRights}. Only '
               'import files from people you trust.',
               style: theme.textTheme.bodySmall,
             ),

@@ -22,6 +22,7 @@ import 'import_user_data_view.dart';
 import 'label_and_result.dart';
 import 'network_preset_editor_view.dart';
 import 'network_profile_editor_view.dart';
+import 'platform_texts.dart';
 
 /// Main window: adapters on the left; profiles (top) and presets (bottom) on
 /// the right; the apply action and the status line at the bottom. Opens the
@@ -1027,7 +1028,11 @@ class _EmptyPanelText extends StatelessWidget {
 }
 
 Future<void> _showHelp(BuildContext context) {
-  return showDialog<void>(context: context, builder: (_) => const HelpView());
+  final platform = context.read<MainViewModel>().platform;
+  return showDialog<void>(
+    context: context,
+    builder: (_) => HelpView(platform: platform),
+  );
 }
 
 const _userDataFileTypes = [
@@ -1060,6 +1065,7 @@ Future<void> _importUserData(BuildContext context) async {
       localAdapterNames: [
         for (final adapter in mainViewModel.adapters) adapter.name,
       ],
+      commandRights: PlatformTexts.of(mainViewModel.platform).commandRights,
     ),
   );
   if (choice == null) return;
@@ -1140,6 +1146,7 @@ Future<void> _openProfileEditor(
         otherProfileNames: mainViewModel.profileNamesOtherThan(profileToEdit),
       ),
       child: NetworkProfileEditorView(
+        platformTexts: PlatformTexts.of(mainViewModel.platform),
         pluginFolderPath: mainViewModel.pluginFolderPath,
         onOpenPluginFolder: mainViewModel.openPluginFolder,
         onBrowseCommandFile: (currentCommandPath) =>
@@ -1151,19 +1158,18 @@ Future<void> _openProfileEditor(
   await mainViewModel.saveProfile(savedProfile, originalProfile: profileToEdit);
 }
 
-const _commandFileTypes = [
-  XTypeGroup(
-    label: 'Programs and scripts',
-    extensions: ['exe', 'ps1', 'bat', 'cmd'],
-  ),
-];
-
 Future<String?> _browseCommandFile(
   MainViewModel mainViewModel,
   String currentCommandPath,
 ) async {
   final file = await openFile(
-    acceptedTypeGroups: _commandFileTypes,
+    acceptedTypeGroups: [
+      XTypeGroup(
+        label: 'Programs and scripts',
+        extensions: PlatformTexts.of(mainViewModel.platform)
+            .commandFileExtensions,
+      ),
+    ],
     initialDirectory: mainViewModel.folderToBrowseFrom(currentCommandPath),
   );
   if (file == null) return null;

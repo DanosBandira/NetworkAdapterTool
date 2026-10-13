@@ -1,29 +1,69 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as path;
+
 import '../contracts/network_profile_repository.dart';
 import '../models/network_preset.dart';
 import '../models/network_profile.dart';
 import '../models/network_profile_library.dart';
+import '../platform/host_platform.dart';
 
 /// Stores all profiles and presets in one indented JSON file, by default
-/// `%APPDATA%\NetworkAdapterTool\user_data.json`.
+/// `%APPDATA%\NetworkAdapterTool\user_data.json` on Windows and
+/// `~/.config/network-adapter-tool/user_data.json` on Linux.
 ///
 /// The file carries a format version so an older app version refuses a file
 /// written by a newer one instead of overwriting fields it does not know.
 class JsonNetworkProfileRepository implements NetworkProfileRepository {
   const JsonNetworkProfileRepository(this._userDataFile);
 
-  factory JsonNetworkProfileRepository.inRoamingAppData() {
-    final roamingAppDataPath = Platform.environment['APPDATA'];
-    if (roamingAppDataPath == null) {
-      throw const NetworkProfileStorageException(
-        'The APPDATA environment variable is not set.',
+  factory JsonNetworkProfileRepository.inUserSettingsFolder(
+    HostPlatform platform,
+  ) {
+    return JsonNetworkProfileRepository(
+      File(userDataFilePath(platform, Platform.environment)),
+    );
+  }
+
+  /// Where the user's profiles and presets live on [platform]: the roaming
+  /// AppData folder on Windows, the XDG config folder on Linux (usually
+  /// `~/.config`).
+  ///
+  /// Throws [NetworkProfileStorageException] when the environment does not
+  /// name that folder.
+  static String userDataFilePath(
+    HostPlatform platform,
+    Map<String, String> environment,
+  ) {
+    return switch (platform) {
+      HostPlatform.windows => path.windows.join(
+        _requiredVariable(environment, 'APPDATA'),
+        'NetworkAdapterTool',
+        _fileName,
+      ),
+      HostPlatform.linux => path.posix.join(
+        environment['XDG_CONFIG_HOME'] ??
+            path.posix.join(_requiredVariable(environment, 'HOME'), '.config'),
+        'network-adapter-tool',
+        _fileName,
+      ),
+    };
+  }
+
+  static const _fileName = 'user_data.json';
+
+  static String _requiredVariable(
+    Map<String, String> environment,
+    String name,
+  ) {
+    final value = environment[name];
+    if (value == null || value.isEmpty) {
+      throw NetworkProfileStorageException(
+        'The $name environment variable is not set.',
       );
     }
-    return JsonNetworkProfileRepository(
-      File('$roamingAppDataPath\\NetworkAdapterTool\\user_data.json'),
-    );
+    return value;
   }
 
   // Version history:

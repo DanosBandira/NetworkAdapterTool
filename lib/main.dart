@@ -8,15 +8,26 @@ import 'package:provider/provider.dart';
 import 'app/view_models/main_view_model.dart';
 import 'app/views/main_view.dart';
 import 'core/adapters/explorer_folder_opener.dart';
+import 'core/adapters/linux_ping_host_pinger.dart';
 import 'core/adapters/netsh_network_adapter_configurator.dart';
+import 'core/adapters/nmcli_client.dart';
+import 'core/adapters/nmcli_network_adapter_configurator.dart';
+import 'core/adapters/nmcli_network_adapter_reader.dart';
 import 'core/adapters/ping_exe_host_pinger.dart';
 import 'core/adapters/powershell_network_adapter_reader.dart';
 import 'core/adapters/process_command_runner.dart';
 import 'core/adapters/process_program_launcher.dart';
+import 'core/adapters/xdg_folder_opener.dart';
 import 'core/commands/plugin_path_resolver.dart';
 import 'core/commands/profile_command_runner.dart';
+import 'core/contracts/command_runner.dart';
+import 'core/contracts/folder_opener.dart';
+import 'core/contracts/host_pinger.dart';
+import 'core/contracts/network_adapter_configurator.dart';
+import 'core/contracts/network_adapter_reader.dart';
 import 'core/network_preset_applier.dart';
 import 'core/network_profile_applier.dart';
+import 'core/platform/host_platform.dart';
 import 'core/profiles/json_network_profile_library_transfer.dart';
 import 'core/profiles/json_network_profile_repository.dart';
 import 'core/profiles/network_profile_validator.dart';
@@ -32,33 +43,71 @@ void main() {
 }
 
 MainViewModel _composeMainViewModel() {
+  final platform = HostPlatform.current;
   const commandRunner = ProcessCommandRunner();
-  const reader = PowerShellNetworkAdapterReader(commandRunner);
-  const applier = NetworkProfileApplier(
-    validator: NetworkProfileValidator(),
-    configurator: NetshNetworkAdapterConfigurator(commandRunner),
-    reader: reader,
+  final system = _SystemTools.of(platform, commandRunner);
+  final applier = NetworkProfileApplier(
+    validator: const NetworkProfileValidator(),
+    configurator: system.configurator,
+    reader: system.reader,
+    platform: platform,
   );
   return MainViewModel(
-    reader: reader,
-    repository: JsonNetworkProfileRepository.inRoamingAppData(),
+    reader: system.reader,
+    repository: JsonNetworkProfileRepository.inUserSettingsFolder(platform),
     applier: applier,
-    presetApplier: const NetworkPresetApplier(applier),
-    pingTargetsChecker: const PingTargetsChecker(
-      PingExeHostPinger(commandRunner),
-    ),
+    presetApplier: NetworkPresetApplier(applier),
+    pingTargetsChecker: PingTargetsChecker(system.pinger),
     libraryTransfer: const JsonNetworkProfileLibraryTransfer(),
     profileCommandRunner: ProfileCommandRunner(
-      launcher: const ProcessProgramLauncher(),
+      launcher: ProcessProgramLauncher(platform: platform),
       pathResolver: PluginPathResolver(_pluginFolderPath()),
+      platform: platform,
     ),
-    folderOpener: const ExplorerFolderOpener(commandRunner),
+    folderOpener: system.folderOpener,
+    platform: platform,
   );
 }
 
-// Next to the exe rather than in %APPDATA%: plugins ship inside the release
-// zip and travel with the app folder. Whoever can write there can already
-// replace the exe itself, so this adds no new way to run code as admin.
+/// The implementations that talk to the operating system: netsh, PowerShell,
+/// ping.exe and Explorer on Windows; nmcli, ping and xdg-open on Linux.
+class _SystemTools {
+  const _SystemTools({
+    required this.reader,
+    required this.configurator,
+    required this.pinger,
+    required this.folderOpener,
+  });
+
+  factory _SystemTools.of(HostPlatform platform, CommandRunner commandRunner) {
+    return switch (platform) {
+      HostPlatform.windows => _SystemTools(
+        reader: PowerShellNetworkAdapterReader(commandRunner),
+        configurator: NetshNetworkAdapterConfigurator(commandRunner),
+        pinger: PingExeHostPinger(commandRunner),
+        folderOpener: ExplorerFolderOpener(commandRunner),
+      ),
+      HostPlatform.linux => _SystemTools(
+        reader: NmcliNetworkAdapterReader(NmcliClient(commandRunner)),
+        configurator: NmcliNetworkAdapterConfigurator(
+          NmcliClient(commandRunner),
+        ),
+        pinger: LinuxPingHostPinger(commandRunner),
+        folderOpener: XdgFolderOpener(commandRunner),
+      ),
+    };
+  }
+
+  final NetworkAdapterReader reader;
+  final NetworkAdapterConfigurator configurator;
+  final HostPinger pinger;
+  final FolderOpener folderOpener;
+}
+
+// Next to the executable rather than in the user's settings folder: plugins
+// ship inside the release package and travel with the app folder. Whoever
+// can write there can already replace the executable itself, so this adds
+// no new way to run code with the app's rights.
 String _pluginFolderPath() =>
     path.join(path.dirname(Platform.resolvedExecutable), 'plugins');
 
