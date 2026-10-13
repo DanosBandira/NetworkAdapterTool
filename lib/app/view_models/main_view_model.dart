@@ -80,6 +80,7 @@ class MainViewModel extends ChangeNotifier {
   final Map<String, ProfileCommandRun> _activeCommandRunByProfileName = {};
   final Set<String> _profileNamesRunningCommands = {};
   final Set<String> _profileNamesStoppingCommands = {};
+  final Set<String> _presetNamesStoppingCommands = {};
   bool _isDisposed = false;
 
   List<NetworkAdapterViewModel> _adapters = [];
@@ -254,18 +255,25 @@ class MainViewModel extends ChangeNotifier {
 
   /// The profiles a preset uses that have ping targets, each once, in preset
   /// order. Lines whose profile no longer exists are skipped.
-  List<NetworkProfile> pingableProfilesOf(NetworkPreset preset) {
-    final profiles = <NetworkProfile>[];
-    for (final assignment in preset.assignments) {
-      final profile = _profileNamed(assignment.profileName);
-      if (profile != null &&
-          profile.pingTargets.isNotEmpty &&
-          !profiles.contains(profile)) {
-        profiles.add(profile);
-      }
-    }
-    return profiles;
-  }
+  List<NetworkProfile> pingableProfilesOf(NetworkPreset preset) =>
+      _profilesUsedBy(preset, (profile) => profile.pingTargets.isNotEmpty);
+
+  /// The profiles a preset uses that have commands, each once, in preset
+  /// order.
+  List<NetworkProfile> profilesWithCommandsOf(NetworkPreset preset) =>
+      _profilesUsedBy(preset, (profile) => profile.commands.isNotEmpty);
+
+  bool isRunningPresetCommands(NetworkPreset preset) =>
+      profilesWithCommandsOf(preset)
+          .any((profile) => isRunningCommands(profile.name));
+
+  bool canRunPresetCommands(NetworkPreset preset) =>
+      profilesWithCommandsOf(preset).isNotEmpty &&
+      !isRunningPresetCommands(preset);
+
+  bool canStopPresetCommands(NetworkPreset preset) =>
+      isRunningPresetCommands(preset) &&
+      !_presetNamesStoppingCommands.contains(preset.name);
 
   bool isPingingPreset(NetworkPreset preset) =>
       pingableProfilesOf(preset).any((profile) => isPinging(profile.name));
@@ -495,6 +503,29 @@ class MainViewModel extends ChangeNotifier {
     if (!canPingPreset(preset)) return;
     await Future.wait([
       for (final profile in pingableProfilesOf(preset)) pingTargetsOf(profile),
+    ]);
+  }
+
+  /// Runs the commands of every profile in [preset], profile after profile,
+  /// without applying anything. Stop ends the running one and skips the
+  /// rest, also of the following profiles.
+  Future<void> runPresetCommands(NetworkPreset preset) async {
+    if (!canRunPresetCommands(preset)) return;
+    for (final profile in profilesWithCommandsOf(preset)) {
+      if (_presetNamesStoppingCommands.contains(preset.name)) break;
+      await runCommandsOf(profile);
+    }
+    _presetNamesStoppingCommands.remove(preset.name);
+    _notifyListenersUnlessDisposed();
+  }
+
+  Future<void> stopPresetCommands(NetworkPreset preset) async {
+    if (!canStopPresetCommands(preset)) return;
+    _presetNamesStoppingCommands.add(preset.name);
+    notifyListeners();
+    await Future.wait([
+      for (final profile in profilesWithCommandsOf(preset))
+        if (isRunningCommands(profile.name)) stopCommandsOf(profile.name),
     ]);
   }
 
@@ -1141,6 +1172,20 @@ class MainViewModel extends ChangeNotifier {
       (adapterName, profileName) =>
           profileName == originalName ? newName : profileName,
     );
+  }
+
+  List<NetworkProfile> _profilesUsedBy(
+    NetworkPreset preset,
+    bool Function(NetworkProfile profile) isWanted,
+  ) {
+    final profiles = <NetworkProfile>[];
+    for (final assignment in preset.assignments) {
+      final profile = _profileNamed(assignment.profileName);
+      if (profile != null && isWanted(profile) && !profiles.contains(profile)) {
+        profiles.add(profile);
+      }
+    }
+    return profiles;
   }
 
   // Manual settings and the DHCP shortcut are not saved profiles; for those

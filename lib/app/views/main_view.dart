@@ -569,20 +569,14 @@ class _CompactButton extends StatelessWidget {
 }
 
 /// One ping target in a profile card: its state, name, last result and a
-/// button to ping only this target (left out in the preset card, which
-/// repeats the results).
+/// button to ping only this target.
 class _PingTargetRow extends StatelessWidget {
-  const _PingTargetRow({
-    required this.profile,
-    required this.target,
-    this.showPingButton = true,
-  });
+  const _PingTargetRow({required this.profile, required this.target});
 
   static const _reachableColor = Color(0xFF2E7D32);
 
   final NetworkProfile profile;
   final PingTarget target;
-  final bool showPingButton;
 
   @override
   Widget build(BuildContext context) {
@@ -601,14 +595,13 @@ class _PingTargetRow extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       actions: [
-        if (showPingButton)
-          _CompactButton(
-            label: 'Ping',
-            tooltip: 'Ping ${target.ipAddress}',
-            onPressed: viewModel.canPingTarget(profile, target)
-                ? () => viewModel.pingTarget(profile, target)
-                : null,
-          ),
+        _CompactButton(
+          label: 'Ping',
+          tooltip: 'Ping ${target.ipAddress}',
+          onPressed: viewModel.canPingTarget(profile, target)
+              ? () => viewModel.pingTarget(profile, target)
+              : null,
+        ),
       ],
     );
   }
@@ -1269,7 +1262,7 @@ class _PresetPanel extends StatelessWidget {
                   padding: const EdgeInsets.all(8),
                   children: [
                     for (final preset in viewModel.presets)
-                      _PresetTile(preset: preset),
+                      _PresetTile(key: ValueKey(preset.name), preset: preset),
                   ],
                 ),
         ),
@@ -1278,16 +1271,30 @@ class _PresetPanel extends StatelessWidget {
   }
 }
 
-class _PresetTile extends StatelessWidget {
-  const _PresetTile({required this.preset});
+class _PresetTile extends StatefulWidget {
+  const _PresetTile({super.key, required this.preset});
 
   final NetworkPreset preset;
+
+  @override
+  State<_PresetTile> createState() => _PresetTileState();
+}
+
+class _PresetTileState extends State<_PresetTile> {
+  // Folded by default like the profile cards; the folded header still shows
+  // a summary of the results.
+  bool _pingTargetsAreExpanded = false;
+  bool _commandsAreExpanded = false;
+
+  NetworkPreset get _preset => widget.preset;
 
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<MainViewModel>();
     final theme = Theme.of(context);
-    final lineStatuses = viewModel.lineStatusesFor(preset.name);
+    final lineStatuses = viewModel.lineStatusesFor(_preset.name);
+    final pingableProfiles = viewModel.pingableProfilesOf(_preset);
+    final profilesWithCommands = viewModel.profilesWithCommandsOf(_preset);
     return Card(
       elevation: 0,
       color: CardColors.preset(theme.brightness),
@@ -1295,28 +1302,24 @@ class _PresetTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ListTile(
-            title: Text(preset.name),
+            title: Text(_preset.name),
             subtitle: Text(_describeAssignments()),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (viewModel.pingableProfilesOf(preset).isNotEmpty) ...[
-                  _buildPingButton(viewModel),
-                  const SizedBox(width: 8),
-                ],
                 _buildApplyButton(context, viewModel),
                 IconButton(
                   tooltip: 'Edit',
                   icon: const Icon(Icons.edit_outlined),
                   onPressed: viewModel.canEditPresets
-                      ? () => _openPresetEditor(context, presetToEdit: preset)
+                      ? () => _openPresetEditor(context, presetToEdit: _preset)
                       : null,
                 ),
                 IconButton(
                   tooltip: 'Delete',
                   icon: const Icon(Icons.delete_outline),
                   onPressed: viewModel.canEditPresets
-                      ? () => _confirmAndDeletePreset(context, preset)
+                      ? () => _confirmAndDeletePreset(context, _preset)
                       : null,
                 ),
               ],
@@ -1324,7 +1327,10 @@ class _PresetTile extends StatelessWidget {
           ),
           ..._buildMissingAdapterWarnings(theme, viewModel),
           if (lineStatuses != null) _PresetLineResults(statuses: lineStatuses),
-          ..._buildPingResultsPerProfile(context, viewModel),
+          if (pingableProfiles.isNotEmpty)
+            _buildPingTargetSection(viewModel, pingableProfiles),
+          if (profilesWithCommands.isNotEmpty)
+            _buildCommandSection(viewModel, profilesWithCommands),
         ],
       ),
     );
@@ -1333,7 +1339,7 @@ class _PresetTile extends StatelessWidget {
   // Arrow points left like the apply button: the profile goes onto the
   // adapter.
   String _describeAssignments() => [
-    for (final assignment in preset.assignments)
+    for (final assignment in _preset.assignments)
       '${assignment.adapterName} ← ${assignment.profileName}',
   ].join('\n');
 
@@ -1344,7 +1350,7 @@ class _PresetTile extends StatelessWidget {
     MainViewModel viewModel,
   ) {
     return [
-      for (final adapterName in viewModel.missingAdaptersOf(preset))
+      for (final adapterName in viewModel.missingAdaptersOf(_preset))
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
           child: Row(
@@ -1369,70 +1375,126 @@ class _PresetTile extends StatelessWidget {
     ];
   }
 
-  // Same results as under the profile cards, repeated here so the whole
-  // preset's reachability is visible in one place.
-  List<Widget> _buildPingResultsPerProfile(
-    BuildContext context,
+  // The same targets and results as under the profile cards, gathered here
+  // so the whole preset's reachability shows in one place.
+  Widget _buildPingTargetSection(
     MainViewModel viewModel,
+    List<NetworkProfile> profiles,
   ) {
-    return [
-      for (final profile in viewModel.pingableProfilesOf(preset))
-        if (viewModel.pingStatusesFor(profile.name) case final statuses?) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
-            child: Text(
-              'Ping ${profile.name}',
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Column(
-              children: [
-                for (final status in statuses)
-                  _PingTargetRow(
-                    profile: profile,
-                    target: status.target,
-                    showPingButton: false,
-                  ),
-              ],
-            ),
-          ),
+    return _ProfileCardSection(
+      title: 'Ping targets',
+      summary: _summarizePingResults(viewModel, profiles),
+      isExpanded: _pingTargetsAreExpanded,
+      onToggle: () =>
+          setState(() => _pingTargetsAreExpanded = !_pingTargetsAreExpanded),
+      headerAction: _CompactButton(
+        label: 'Ping all',
+        isBusy: viewModel.isPingingPreset(_preset),
+        onPressed: viewModel.canPingPreset(_preset)
+            ? () {
+                setState(() => _pingTargetsAreExpanded = true);
+                viewModel.pingPreset(_preset);
+              }
+            : null,
+      ),
+      children: [
+        for (final profile in profiles) ...[
+          _ProfileNameLabel(profile.name),
+          for (final target in profile.pingTargets)
+            _PingTargetRow(profile: profile, target: target),
         ],
-    ];
+      ],
+    );
   }
 
-  Widget _buildPingButton(MainViewModel viewModel) {
-    return OutlinedButton(
-      onPressed: viewModel.canPingPreset(preset)
-          ? () => viewModel.pingPreset(preset)
-          : null,
-      child: viewModel.isPingingPreset(preset)
-          ? const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox.square(
-                  dimension: 12,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                SizedBox(width: 8),
-                Text('Ping'),
-              ],
+  Widget _buildCommandSection(
+    MainViewModel viewModel,
+    List<NetworkProfile> profiles,
+  ) {
+    final isRunning = viewModel.isRunningPresetCommands(_preset);
+    return _ProfileCardSection(
+      title: 'Commands',
+      summary: _summarizeCommandResults(viewModel, profiles),
+      isExpanded: _commandsAreExpanded,
+      onToggle: () =>
+          setState(() => _commandsAreExpanded = !_commandsAreExpanded),
+      headerAction: isRunning
+          ? _CompactButton(
+              label: 'Stop',
+              icon: Icons.stop,
+              onPressed: viewModel.canStopPresetCommands(_preset)
+                  ? () => viewModel.stopPresetCommands(_preset)
+                  : null,
             )
-          : const Text('Ping'),
+          : _CompactButton(
+              label: 'Run all',
+              onPressed: viewModel.canRunPresetCommands(_preset)
+                  ? () {
+                      setState(() => _commandsAreExpanded = true);
+                      viewModel.runPresetCommands(_preset);
+                    }
+                  : null,
+            ),
+      children: [
+        for (final profile in profiles) ...[
+          _ProfileNameLabel(profile.name),
+          for (var index = 0; index < profile.commands.length; index++)
+            _CommandRow(profile: profile, commandIndex: index),
+        ],
+      ],
     );
+  }
+
+  String _summarizePingResults(
+    MainViewModel viewModel,
+    List<NetworkProfile> profiles,
+  ) {
+    if (viewModel.isPingingPreset(_preset)) return 'Pinging…';
+    final statuses = [
+      for (final profile in profiles)
+        ...?viewModel.pingStatusesFor(profile.name),
+    ];
+    final targetCount = profiles.fold(
+      0,
+      (count, profile) => count + profile.pingTargets.length,
+    );
+    if (statuses.isEmpty) return _countText(targetCount, 'target');
+    final replyCount = statuses
+        .where((status) => status.state == PingState.reachable)
+        .length;
+    return '$replyCount of ${statuses.length} replied';
+  }
+
+  String _summarizeCommandResults(
+    MainViewModel viewModel,
+    List<NetworkProfile> profiles,
+  ) {
+    if (viewModel.isRunningPresetCommands(_preset)) return 'Running…';
+    final ranStatuses = [
+      for (final profile in profiles)
+        ...?viewModel.commandStatusesFor(profile.name),
+    ].where((status) => status.state != CommandState.skipped).toList();
+    final commandCount = profiles.fold(
+      0,
+      (count, profile) => count + profile.commands.length,
+    );
+    if (ranStatuses.isEmpty) return _countText(commandCount, 'command');
+    final succeededCount = ranStatuses
+        .where((status) => status.state == CommandState.succeeded)
+        .length;
+    return '$succeededCount of ${ranStatuses.length} succeeded';
   }
 
   Widget _buildApplyButton(BuildContext context, MainViewModel viewModel) {
     return FilledButton.tonal(
       onPressed: viewModel.canApplyPresets
           ? () => viewModel.applyPreset(
-              preset,
+              _preset,
               confirmFreeingAddress: (conflict) =>
                   _confirmFreeingAddress(context, conflict),
             )
           : null,
-      child: viewModel.isApplyingPreset(preset.name)
+      child: viewModel.isApplyingPreset(_preset.name)
           ? const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1445,6 +1507,21 @@ class _PresetTile extends StatelessWidget {
               ],
             )
           : const Text('Apply'),
+    );
+  }
+}
+
+/// Groups the rows of one profile inside a preset card section.
+class _ProfileNameLabel extends StatelessWidget {
+  const _ProfileNameLabel(this.profileName);
+
+  final String profileName;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(profileName, style: Theme.of(context).textTheme.labelMedium),
     );
   }
 }

@@ -284,10 +284,15 @@ prefix length to a dotted subnet mask. The reader sits behind
   `user_data.backup-YYYYMMDD-HHMMSS.json` and aborts if that fails. Preset
   cards warn about adapters missing on this PC (only after adapters were
   read once).
-- Preset "Ping" button (shown when at least one of its profiles has ping
-  targets): pings all those profiles concurrently without applying anything.
-  Results show under the profile cards and, grouped per profile, in the
-  preset card.
+- Preset card sections (user request, 2026-10-13, replacing a separate
+  "Ping" button): foldable "Ping targets" and "Commands" like the profile
+  card, gathering the targets/commands of all profiles the preset uses
+  (each profile once, under its name). "Ping all" pings those profiles
+  concurrently; "Run all" (`runPresetCommands`) runs the profiles' commands
+  one profile after another, all of them regardless of `runAfterApply`,
+  and Stop ends the running one and skips the rest. Per row the same
+  Ping/Run buttons as on the profile card. Nothing is applied; results are
+  the profiles' own, so they also show under the profile cards.
 - `user_data.json` also holds `"helpWasShown": true` once the help opened
   automatically on the first start (written only when true, read as false
   when missing). Added without a format version bump on purpose: older app

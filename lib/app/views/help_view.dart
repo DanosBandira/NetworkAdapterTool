@@ -292,8 +292,9 @@ const _helpSteps = [
           'more adapters are set to the right profile and their ping targets '
           'are pinged automatically, so you can switch setups quickly.',
       'Example: "Ethernet ← Machine" and "Wi-Fi ← Office".',
-      'Ping pings the targets of all profiles in the preset, without '
-          'changing anything.',
+      'Below the preset, "Ping targets" and "Commands" gather those of all '
+          'its profiles: "Ping all" / "Run all", or one target or command '
+          'with its own button, without changing anything.',
     ],
   ),
   _HelpStep(

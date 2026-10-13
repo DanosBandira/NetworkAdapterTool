@@ -1117,6 +1117,58 @@ void main() {
       ]);
     });
 
+    group('of a preset', () {
+      const bothPreset = NetworkPreset(
+        name: 'Both',
+        assignments: [
+          PresetAssignment(adapterName: 'Ethernet', profileName: 'Line 1'),
+          PresetAssignment(adapterName: 'Wi-Fi', profileName: 'Line 1'),
+        ],
+      );
+
+      setUp(() {
+        repository = InMemoryNetworkProfileRepository(
+          storedProfiles: [lineProfile],
+          storedPresets: [bothPreset],
+        );
+      });
+
+      test('runs every command of its profiles once', () async {
+        final viewModel = await initializedViewModel(
+          FakeNetworkAdapterReader([ethernet()]),
+        );
+
+        expect(viewModel.profilesWithCommandsOf(bothPreset), [lineProfile]);
+        await viewModel.runPresetCommands(bothPreset);
+
+        expect(programLauncher.launchedPrograms, hasLength(2));
+        expect(statesOf(viewModel), [
+          CommandState.succeeded,
+          CommandState.succeeded,
+        ]);
+        expect(viewModel.canRunPresetCommands(bothPreset), isTrue);
+      });
+
+      test('stops the running command and skips the rest', () async {
+        programLauncher.finishImmediately = false;
+        final viewModel = await initializedViewModel(
+          FakeNetworkAdapterReader([ethernet()]),
+        );
+        final running = viewModel.runPresetCommands(bothPreset);
+        await pumpEventQueue();
+
+        expect(viewModel.isRunningPresetCommands(bothPreset), isTrue);
+        await viewModel.stopPresetCommands(bothPreset);
+        await running;
+
+        expect(statesOf(viewModel), [
+          CommandState.stopped,
+          CommandState.skipped,
+        ]);
+        expect(viewModel.isRunningPresetCommands(bothPreset), isFalse);
+      });
+    });
+
     test('runs commands once for a preset using the profile twice', () async {
       repository = InMemoryNetworkProfileRepository(
         storedProfiles: [lineProfile],

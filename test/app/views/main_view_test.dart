@@ -7,6 +7,7 @@ import 'package:network_adapter_tool/core/commands/plugin_path_resolver.dart';
 import 'package:network_adapter_tool/core/commands/profile_command_runner.dart';
 import 'package:network_adapter_tool/core/models/addressing_mode.dart';
 import 'package:network_adapter_tool/core/models/network_adapter.dart';
+import 'package:network_adapter_tool/core/models/network_preset.dart';
 import 'package:network_adapter_tool/core/models/network_profile.dart';
 import 'package:network_adapter_tool/core/models/ping_target.dart';
 import 'package:network_adapter_tool/core/models/profile_command.dart';
@@ -564,5 +565,42 @@ void main() {
     await tester.pump();
 
     expect(find.text('Machine'), findsOneWidget);
+  });
+
+  testWidgets('pings the targets of a preset from its card', (tester) async {
+    const lineProfile = NetworkProfile(
+      name: 'Line 1',
+      addressingMode: AddressingMode.dhcp,
+      pingTargets: [PingTarget(ipAddress: '10.100.10.1', name: 'PLC')],
+    );
+    repository.storedLibrary = repository.storedLibrary.copyWith(
+      profiles: [lineProfile],
+      presets: [
+        const NetworkPreset(
+          name: 'Morning',
+          assignments: [
+            PresetAssignment(adapterName: 'Ethernet', profileName: 'Line 1'),
+          ],
+        ),
+      ],
+    );
+    await showApp(tester);
+    final presetCard = find.ancestor(
+      of: find.text('Morning'),
+      matching: find.byType(Card),
+    );
+    Finder inPresetCard(Finder finder) =>
+        find.descendant(of: presetCard, matching: finder);
+
+    expect(inPresetCard(find.textContaining('1 target')), findsOneWidget);
+
+    await tester.runAsync(() async {
+      await tester.tap(inPresetCard(find.text('Ping all')));
+      await pumpEventQueue();
+    });
+    await tester.pump();
+
+    expect(inPresetCard(find.text('PLC · 10.100.10.1')), findsOneWidget);
+    expect(inPresetCard(find.text('3 ms')), findsOneWidget);
   });
 }

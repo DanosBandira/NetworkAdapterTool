@@ -370,7 +370,7 @@ class CommandsExample extends StatelessWidget {
   }
 }
 
-/// Step 6: a preset card with its lines and the Ping and Apply buttons.
+/// Step 6: a preset card with its lines, Apply and its folded sections.
 class PresetExample extends StatelessWidget {
   const PresetExample({super.key});
 
@@ -386,21 +386,31 @@ class PresetExample extends StatelessWidget {
             elevation: 0,
             margin: EdgeInsets.zero,
             color: CardColors.preset(theme.brightness),
-            child: ListTile(
-              title: const Text('Machine setup'),
-              subtitle: const Text('Ethernet ← Machine\nWi-Fi ← Office'),
-              isThreeLine: true,
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  OutlinedButton(onPressed: () {}, child: const Text('Ping')),
-                  const SizedBox(width: 8),
-                  FilledButton.tonal(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ListTile(
+                  title: const Text('Machine setup'),
+                  subtitle: const Text('Ethernet ← Machine\nWi-Fi ← Office'),
+                  isThreeLine: true,
+                  trailing: FilledButton.tonal(
                     onPressed: () {},
                     child: const Text('Apply'),
                   ),
-                ],
-              ),
+                ),
+                _exampleCardSection(
+                  title: 'Ping targets',
+                  summary: '2 of 2 replied',
+                  actionLabel: 'Ping all',
+                  rows: const [],
+                ),
+                _exampleCardSection(
+                  title: 'Commands',
+                  summary: '1 command',
+                  actionLabel: 'Run all',
+                  rows: const [],
+                ),
+              ],
             ),
           ),
         ),
@@ -610,15 +620,18 @@ Widget _exampleProfileCard(
   );
 }
 
-/// An open section of a profile card with its "all" button.
+/// A section of a profile or preset card with its "all" button; folded when
+/// a [summary] is given.
 Widget _exampleCardSection({
   required String title,
   required String actionLabel,
   required List<Widget> rows,
+  String? summary,
 }) {
   return CollapsibleSection(
     title: title,
-    isExpanded: true,
+    summary: summary,
+    isExpanded: summary == null,
     onToggle: () {},
     margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
     headerAction: OutlinedButton(
