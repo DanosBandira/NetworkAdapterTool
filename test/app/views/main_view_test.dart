@@ -548,4 +548,21 @@ void main() {
     expect(find.text('3 ms'), findsOneWidget);
     expect(find.text('5 ms'), findsOneWidget);
   });
+
+  testWidgets('folds the profile list to its header', (tester) async {
+    await showApp(tester);
+    expect(find.text('Machine'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Collapse Profiles'));
+    await tester.pump();
+
+    expect(find.text('Machine'), findsNothing);
+    expect(find.textContaining('1 profile'), findsOneWidget);
+    expect(find.textContaining('Presets'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Expand Profiles'));
+    await tester.pump();
+
+    expect(find.text('Machine'), findsOneWidget);
+  });
 }

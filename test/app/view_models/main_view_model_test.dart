@@ -717,6 +717,60 @@ void main() {
       expect(viewModel.canApplySelectedProfile, isTrue);
     });
 
+    group('in a preset', () {
+      const machinePreset = NetworkPreset(
+        name: 'Machine setup',
+        assignments: [
+          PresetAssignment(adapterName: 'Ethernet', profileName: 'Machine'),
+        ],
+      );
+
+      setUp(() {
+        repository = InMemoryNetworkProfileRepository(
+          storedProfiles: [machineProfile, officeProfile],
+          storedPresets: [machinePreset],
+        );
+      });
+
+      test('frees the address before applying the lines', () async {
+        final viewModel = await initializedViewModel(readerWithConflict());
+
+        await viewModel.applyPreset(
+          machinePreset,
+          confirmFreeingAddress: (_) async => true,
+        );
+
+        expect(
+          [
+            for (final (profile, adapterName) in configurator.appliedProfiles)
+              (profile.addressingMode, adapterName),
+          ],
+          [
+            (AddressingMode.dhcp, 'Ethernet 3'),
+            (AddressingMode.staticIp, 'Ethernet'),
+          ],
+        );
+        expect(viewModel.statusMessage?.kind, StatusKind.success);
+        expect(
+          viewModel.statusMessage?.text,
+          contains('Switched to DHCP to free an address: "Ethernet 3"'),
+        );
+      });
+
+      test('applies no line when the user keeps the address', () async {
+        final viewModel = await initializedViewModel(readerWithConflict());
+
+        await viewModel.applyPreset(
+          machinePreset,
+          confirmFreeingAddress: (_) async => false,
+        );
+
+        expect(configurator.appliedProfiles, isEmpty);
+        expect(viewModel.lineStatusesFor(machinePreset.name), isNull);
+        expect(viewModel.canApplyPresets, isTrue);
+      });
+    });
+
     test('applies directly when nobody can be asked', () async {
       final viewModel = await viewModelReadyToApplyMachine();
 

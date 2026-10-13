@@ -227,15 +227,19 @@ prefix length to a dotted subnet mask. The reader sits behind
   to do; no extra read on the success path, no parsing of localized netsh
   text.
 - Freeing the address (user request, 2026-10-13: "always be able to
-  continue"): the arrow button and the adapter settings dialog pass a
+  continue"): the arrow button, the adapter settings dialog and preset
+  Apply pass a
   `ConfirmFreeingAddress` callback. Before applying a static profile,
   `MainViewModel` checks the adapter list on screen for another adapter
   with the same IP; if found, the view asks "Switch "X" to DHCP and apply?"
   and on yes switches X to DHCP (works while disconnected), then applies.
   When the list was stale and Windows still returns `ProfileAddressInUse`,
   the same question follows and the apply is retried once. Cancel or a
-  failed DHCP switch applies nothing. Presets pass no callback, so their
-  lines only report the conflict.
+  failed DHCP switch applies nothing. Presets (Apply on a preset card,
+  added the same day on request) ask for every conflicting line before
+  applying any line, so declining one leaves all adapters unchanged; a line
+  Windows still rejects with `ProfileAddressInUse` gets the question too and
+  is retried once. The summary names the adapters switched to DHCP.
 - A DHCP profile is verified on addressing mode only; right after switching
   the adapter may still hold an APIPA address.
 - Windows does not disable DHCP on a disconnected adapter: switching a
@@ -437,7 +441,10 @@ prefix length to a dotted subnet mask. The reader sits behind
   restored size.
 - Main window: adapter grid (name, status, current IP, DHCP/static) on the
   left; on the right the profile list (top half) and the preset list (bottom
-  half, light purple cards with an "Apply" button and per-line results). Below them, centered, the "Apply profile
+  half, light purple cards with an "Apply" button and per-line results).
+  Both lists fold to their header with an arrow next to "+" (user request,
+  2026-10-13; state per session, not stored); folded, the header shows
+  "3 profiles" and the other list takes the height. Below them, centered, the "Apply profile
   to selected adapter" button shaped as a left-pointing arrow
   (`LeftArrowBorder`: the profile goes right-to-left onto the adapter), orange
   (`0xFFF57C00`, white text; theme grey when disabled), with the status line

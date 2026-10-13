@@ -239,6 +239,8 @@ const _helpSteps = [
           'you choose the adapter when applying it.',
       'To apply: select an adapter and a profile, then click the orange '
           'arrow button at the bottom.',
+      'The arrow next to + folds the Profiles or Presets list, e.g. to give '
+          'the presets more room.',
     ],
   ),
   _HelpStep(

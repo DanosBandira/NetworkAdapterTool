@@ -386,18 +386,39 @@ class MainViewModel extends ChangeNotifier {
   /// Applies every line of [preset]; a failing line does not stop the rest.
   /// Afterwards the ping targets of all successfully applied profiles are
   /// pinged.
-  Future<void> applyPreset(NetworkPreset preset) async {
+  ///
+  /// With [confirmFreeingAddress], addresses the preset needs that are set on
+  /// other adapters are offered to be freed first (switching those adapters
+  /// to DHCP), like when applying one profile. Declining applies nothing.
+  Future<void> applyPreset(
+    NetworkPreset preset, {
+    ConfirmFreeingAddress? confirmFreeingAddress,
+  }) async {
     if (!canApplyPresets) return;
+    final freedAdapterNames = <String>[];
+    if (confirmFreeingAddress != null) {
+      final allFreed = await _freeAddressesNeededBy(
+        preset,
+        confirmFreeingAddress,
+        freedAdapterNames,
+      );
+      if (!allFreed) return;
+    }
     _startApplyingPreset(preset);
     final appliedProfiles = <NetworkProfile>[];
-    await for (final result in _presetApplier.applyPreset(
+    await for (final presetResult in _presetApplier.applyPreset(
       preset,
       _library.profiles,
     )) {
+      final result = await _retryLineAfterFreeingAddress(
+        presetResult,
+        confirmFreeingAddress,
+        freedAdapterNames,
+      );
       _recordPresetLineResult(preset.name, result);
       if (result.isSuccess) appliedProfiles.add(result.profile!);
     }
-    _finishApplyingPreset(preset);
+    _finishApplyingPreset(preset, freedAdapterNames: freedAdapterNames);
     await Future.wait([
       for (final profile in appliedProfiles) pingTargetsOf(profile),
     ]);
@@ -406,6 +427,66 @@ class MainViewModel extends ChangeNotifier {
     for (final profile in {...appliedProfiles}) {
       await _runCommandsToRunAfterApply(profile);
     }
+  }
+
+  // Asks for every conflict before anything changes, so declining one leaves
+  // all adapters as they were. Returns false when nothing may be applied.
+  Future<bool> _freeAddressesNeededBy(
+    NetworkPreset preset,
+    ConfirmFreeingAddress confirmFreeingAddress,
+    List<String> freedAdapterNames,
+  ) async {
+    _isApplying = true;
+    notifyListeners();
+    for (final assignment in preset.assignments) {
+      final profile = _profileNamed(assignment.profileName);
+      if (profile == null) continue;
+      final conflict = _addressConflictOf(profile, assignment.adapterName);
+      if (conflict == null) continue;
+      if (!await _freeAddressIfConfirmed(conflict, confirmFreeingAddress)) {
+        _isApplying = false;
+        notifyListeners();
+        return false;
+      }
+      freedAdapterNames.add(conflict.otherAdapterName);
+    }
+    return true;
+  }
+
+  // The adapter list can be out of date; when Windows still finds a line's
+  // address on another adapter, the same question follows and that line is
+  // applied once more.
+  Future<PresetAssignmentResult> _retryLineAfterFreeingAddress(
+    PresetAssignmentResult result,
+    ConfirmFreeingAddress? confirmFreeingAddress,
+    List<String> freedAdapterNames,
+  ) async {
+    final profile = result.profile;
+    if (confirmFreeingAddress == null || profile == null) return result;
+    if (result.outcome case ProfileAddressInUse(
+      :final ipAddress,
+      :final otherAdapterName,
+    )) {
+      final conflict = AddressConflict(
+        profileName: profile.name,
+        ipAddress: ipAddress,
+        otherAdapterName: otherAdapterName,
+      );
+      if (!await _freeAddressIfConfirmed(conflict, confirmFreeingAddress)) {
+        return result;
+      }
+      freedAdapterNames.add(otherAdapterName);
+      final outcome = await _applier.applyProfileToAdapter(
+        profile,
+        result.assignment.adapterName,
+      );
+      return PresetAssignmentResult.applied(
+        result.assignment,
+        profile,
+        outcome,
+      );
+    }
+    return result;
   }
 
   /// Pings the targets of every profile in [preset] at the same time, without
@@ -982,14 +1063,21 @@ class MainViewModel extends ChangeNotifier {
     _notifyListenersUnlessDisposed();
   }
 
-  void _finishApplyingPreset(NetworkPreset preset) {
+  void _finishApplyingPreset(
+    NetworkPreset preset, {
+    List<String> freedAdapterNames = const [],
+  }) {
     final statuses = _lineStatusesByPresetName[preset.name] ?? [];
     final appliedCount = statuses
         .where((status) => status.state == PresetLineState.applied)
         .length;
+    final freedNote = freedAdapterNames.isEmpty
+        ? ''
+        : ' Switched to DHCP to free an address: '
+              '${freedAdapterNames.map((name) => '"$name"').join(', ')}.';
     final summary =
         'Preset "${preset.name}": $appliedCount of ${statuses.length} '
-        'adapters switched.';
+        'adapters switched.$freedNote';
     _statusMessage = appliedCount == statuses.length
         ? StatusMessage.success(summary)
         : StatusMessage.error('$summary See the preset for details.');

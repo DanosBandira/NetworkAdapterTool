@@ -36,6 +36,11 @@ class MainView extends StatefulWidget {
 class _MainViewState extends State<MainView> {
   late final MainViewModel _viewModel;
 
+  // Either list can be folded to its header, e.g. the profiles while working
+  // with presets; the other one then takes the freed height.
+  bool _profilesAreExpanded = true;
+  bool _presetsAreExpanded = true;
+
   @override
   void initState() {
     super.initState();
@@ -51,6 +56,30 @@ class _MainViewState extends State<MainView> {
   void dispose() {
     _viewModel.removeListener(_showHelpOnFirstStart);
     super.dispose();
+  }
+
+  Widget _buildProfileAndPresetPanels() {
+    final profilePanel = _ProfilePanel(
+      isExpanded: _profilesAreExpanded,
+      onToggle: () =>
+          setState(() => _profilesAreExpanded = !_profilesAreExpanded),
+    );
+    final presetPanel = _PresetPanel(
+      isExpanded: _presetsAreExpanded,
+      onToggle: () =>
+          setState(() => _presetsAreExpanded = !_presetsAreExpanded),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_profilesAreExpanded)
+          Expanded(child: profilePanel)
+        else
+          profilePanel,
+        const Divider(height: 1),
+        if (_presetsAreExpanded) Expanded(child: presetPanel) else presetPanel,
+      ],
+    );
   }
 
   // Runs whenever the view model changes; does something only once, after
@@ -95,23 +124,13 @@ class _MainViewState extends State<MainView> {
       ),
       body: Column(
         children: [
-          const Expanded(
+          Expanded(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(flex: 3, child: _AdapterPanel()),
-                VerticalDivider(width: 1),
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(child: _ProfilePanel()),
-                      Divider(height: 1),
-                      Expanded(child: _PresetPanel()),
-                    ],
-                  ),
-                ),
+                const Expanded(flex: 3, child: _AdapterPanel()),
+                const VerticalDivider(width: 1),
+                Expanded(flex: 2, child: _buildProfileAndPresetPanels()),
               ],
             ),
           ),
@@ -233,24 +252,32 @@ class _AdapterGrid extends StatelessWidget {
 }
 
 class _ProfilePanel extends StatelessWidget {
-  const _ProfilePanel();
+  const _ProfilePanel({required this.isExpanded, required this.onToggle});
+
+  final bool isExpanded;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<MainViewModel>();
+    final header = _PanelHeader(
+      title: 'Profiles',
+      foldedSummary: _countText(viewModel.profiles.length, 'profile'),
+      isExpanded: isExpanded,
+      onToggle: onToggle,
+      action: IconButton(
+        tooltip: 'New profile',
+        icon: const Icon(Icons.add),
+        onPressed: viewModel.canEditProfiles
+            ? () => _openProfileEditor(context, profileToEdit: null)
+            : null,
+      ),
+    );
+    if (!isExpanded) return header;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _PanelHeader(
-          title: 'Profiles',
-          action: IconButton(
-            tooltip: 'New profile',
-            icon: const Icon(Icons.add),
-            onPressed: viewModel.canEditProfiles
-                ? () => _openProfileEditor(context, profileToEdit: null)
-                : null,
-          ),
-        ),
+        header,
         _SearchField(
           hint: 'Search profiles by name or IP',
           onChanged: viewModel.searchProfiles,
@@ -422,7 +449,7 @@ class _ProfileTileState extends State<_ProfileTile> {
     if (viewModel.isPinging(_profile.name)) return 'Pinging…';
     final statuses = viewModel.pingStatusesFor(_profile.name);
     if (statuses == null) {
-      return _counted(_profile.pingTargets.length, 'target');
+      return _countText(_profile.pingTargets.length, 'target');
     }
     final replyCount = statuses
         .where((status) => status.state == PingState.reachable)
@@ -433,7 +460,9 @@ class _ProfileTileState extends State<_ProfileTile> {
   String _summarizeCommandResults(MainViewModel viewModel) {
     if (viewModel.isRunningCommands(_profile.name)) return 'Running…';
     final statuses = viewModel.commandStatusesFor(_profile.name);
-    if (statuses == null) return _counted(_profile.commands.length, 'command');
+    if (statuses == null) {
+      return _countText(_profile.commands.length, 'command');
+    }
     final ranStatuses = statuses.where(
       (status) => status.state != CommandState.skipped,
     );
@@ -450,14 +479,11 @@ class _ProfileTileState extends State<_ProfileTile> {
     return [
       addressing,
       if (profile.pingTargets.isNotEmpty)
-        _counted(profile.pingTargets.length, 'ping target'),
+        _countText(profile.pingTargets.length, 'ping target'),
       if (profile.commands.isNotEmpty)
-        _counted(profile.commands.length, 'command'),
+        _countText(profile.commands.length, 'command'),
     ].join(' · ');
   }
-
-  static String _counted(int count, String noun) =>
-      '$count $noun${count == 1 ? '' : 's'}';
 }
 
 /// A foldable part of a profile card (ping targets or commands), with the
@@ -868,27 +894,74 @@ class _StatusLine extends StatelessWidget {
   }
 }
 
+/// Title row of a panel with its action (e.g. "+") and, for foldable
+/// panels, an arrow to fold the panel to this row. Folded, it shows
+/// [foldedSummary] next to the title.
 class _PanelHeader extends StatelessWidget {
-  const _PanelHeader({required this.title, this.action});
+  const _PanelHeader({
+    required this.title,
+    this.action,
+    this.isExpanded,
+    this.onToggle,
+    this.foldedSummary,
+  });
 
   final String title;
   final Widget? action;
 
+  /// `null` for a panel that cannot fold.
+  final bool? isExpanded;
+  final VoidCallback? onToggle;
+  final String? foldedSummary;
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isFolded = isExpanded == false;
+    final summary = foldedSummary;
+    final titleText = Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: title, style: theme.textTheme.titleMedium),
+          if (isFolded && summary != null)
+            TextSpan(
+              text: '   $summary',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
+            ),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
       child: Row(
         children: [
           Expanded(
-            child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+            child: onToggle == null
+                ? titleText
+                : InkWell(onTap: onToggle, child: titleText),
           ),
           ?action,
+          if (isExpanded case final expanded?)
+            IconButton(
+              tooltip: expanded ? 'Collapse $title' : 'Expand $title',
+              icon: Icon(
+                expanded ? Icons.expand_less : Icons.expand_more,
+                color: theme.colorScheme.primary,
+              ),
+              onPressed: onToggle,
+            ),
         ],
       ),
     );
   }
 }
+
+String _countText(int count, String noun) =>
+    '$count $noun${count == 1 ? '' : 's'}';
 
 /// Search box below a panel header, with a clear button once text is typed.
 class _SearchField extends StatefulWidget {
@@ -1160,24 +1233,32 @@ Future<void> _explainProfileIsUsedByPresets(
 }
 
 class _PresetPanel extends StatelessWidget {
-  const _PresetPanel();
+  const _PresetPanel({required this.isExpanded, required this.onToggle});
+
+  final bool isExpanded;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<MainViewModel>();
+    final header = _PanelHeader(
+      title: 'Presets',
+      foldedSummary: _countText(viewModel.presets.length, 'preset'),
+      isExpanded: isExpanded,
+      onToggle: onToggle,
+      action: IconButton(
+        tooltip: 'New preset',
+        icon: const Icon(Icons.add),
+        onPressed: viewModel.canEditPresets
+            ? () => _openPresetEditor(context, presetToEdit: null)
+            : null,
+      ),
+    );
+    if (!isExpanded) return header;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _PanelHeader(
-          title: 'Presets',
-          action: IconButton(
-            tooltip: 'New preset',
-            icon: const Icon(Icons.add),
-            onPressed: viewModel.canEditPresets
-                ? () => _openPresetEditor(context, presetToEdit: null)
-                : null,
-          ),
-        ),
+        header,
         Expanded(
           child: viewModel.presets.isEmpty
               ? const _EmptyPanelText(
@@ -1223,7 +1304,7 @@ class _PresetTile extends StatelessWidget {
                   _buildPingButton(viewModel),
                   const SizedBox(width: 8),
                 ],
-                _buildApplyButton(viewModel),
+                _buildApplyButton(context, viewModel),
                 IconButton(
                   tooltip: 'Edit',
                   icon: const Icon(Icons.edit_outlined),
@@ -1342,10 +1423,14 @@ class _PresetTile extends StatelessWidget {
     );
   }
 
-  Widget _buildApplyButton(MainViewModel viewModel) {
+  Widget _buildApplyButton(BuildContext context, MainViewModel viewModel) {
     return FilledButton.tonal(
       onPressed: viewModel.canApplyPresets
-          ? () => viewModel.applyPreset(preset)
+          ? () => viewModel.applyPreset(
+              preset,
+              confirmFreeingAddress: (conflict) =>
+                  _confirmFreeingAddress(context, conflict),
+            )
           : null,
       child: viewModel.isApplyingPreset(preset.name)
           ? const Row(
