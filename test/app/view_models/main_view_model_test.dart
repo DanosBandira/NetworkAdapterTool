@@ -587,6 +587,38 @@ void main() {
       expect(viewModel.canPingProfile(lineProfile), isTrue);
     });
 
+    test('pings one target and keeps the other results', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      await viewModel.pingTargetsOf(lineProfile);
+      pinger.attemptsPerAddress.clear();
+
+      final pinging = viewModel.pingTarget(lineProfile, plc);
+
+      expect(viewModel.isPingingTarget(lineProfile.name, plc), isTrue);
+      expect(viewModel.canPingTarget(lineProfile, hmi), isTrue);
+      expect(viewModel.canPingProfile(lineProfile), isFalse);
+      expect(stateOf(viewModel, hmi), PingState.unreachable);
+
+      await pinging;
+
+      expect(pinger.attemptsPerAddress.keys, [plc.ipAddress]);
+      expect(stateOf(viewModel, plc), PingState.reachable);
+      expect(stateOf(viewModel, hmi), PingState.unreachable);
+    });
+
+    test('shows no result for a target that was never pinged', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      await viewModel.pingTarget(lineProfile, hmi);
+
+      expect(viewModel.pingStatusOf(lineProfile.name, plc), isNull);
+      expect(viewModel.pingStatusesFor(lineProfile.name)!.single.target, hmi);
+    });
+
     test('cannot ping a profile without targets', () async {
       final viewModel = await initializedViewModel(
         FakeNetworkAdapterReader([ethernet()]),
@@ -700,6 +732,45 @@ void main() {
         CommandState.succeeded,
       ]);
       expect(viewModel.canRunCommands(lineProfile), isTrue);
+    });
+
+    test('runs one command and keeps the other results', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      await viewModel.runCommandsOf(lineProfile);
+      programLauncher
+        ..launchedPrograms.clear()
+        ..exitCode = 3;
+
+      await viewModel.runCommand(lineProfile, 1);
+
+      expect(programLauncher.launchedPrograms, hasLength(1));
+      expect(
+        viewModel.commandStatusOf(lineProfile.name, 0)?.state,
+        CommandState.succeeded,
+      );
+      expect(
+        viewModel.commandStatusOf(lineProfile.name, 1)?.state,
+        CommandState.failed,
+      );
+    });
+
+    test('cannot run a single command while others run', () async {
+      programLauncher.finishImmediately = false;
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      final running = viewModel.runCommand(lineProfile, 0);
+      await pumpEventQueue();
+
+      expect(viewModel.canRunCommand(lineProfile), isFalse);
+      expect(viewModel.commandStatusOf(lineProfile.name, 1), isNull);
+
+      programLauncher.launchedPrograms.single.finish();
+      await running;
+
+      expect(viewModel.canRunCommand(lineProfile), isTrue);
     });
 
     test('keeps going after a failing command and shows its output', () async {

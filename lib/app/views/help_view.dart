@@ -247,8 +247,11 @@ const _helpSteps = [
           '"PLC 10.100.10.1".',
       'Add them in Edit profile, under Ping targets: an IP address and an '
           'optional name.',
-      'They are pinged automatically after applying the profile, or any time '
-          'with the Ping button, without changing anything.',
+      'They are pinged automatically after applying the profile. On the '
+          'profile card, "Ping all" pings them all and the Ping button next to '
+          'a target pings only that one, without changing anything.',
+      'The section on the card folds open and closed with the arrow; folded, '
+          'it shows how many targets replied.',
       'Each target is tried for up to 10 seconds, because devices need a few '
           'seconds after switching. Green shows the reply time, red means no '
           'reply.',
@@ -267,8 +270,10 @@ const _helpSteps = [
       'A file without a folder, e.g. "tool.exe", is looked up in the '
           '"plugins" folder next to the app; the Open button shows it.',
       'With "Run after applying this profile" checked, the command runs '
-          'after applying, once the ping targets were checked. The Run button '
-          'runs all commands of the profile; Stop ends them.',
+          'after applying, once the ping targets were checked.',
+      'On the profile card, "Run all" runs every command of the profile and '
+          'the Run button next to a command runs only that one. Stop ends '
+          'them.',
       'The result shows under the profile and the last output lines at the '
           'bottom; the page icon shows the full output.',
     ],

@@ -65,11 +65,6 @@ class NetworkProfile {
   /// Programs or scripts run after the ping targets were checked, in order.
   final List<ProfileCommand> commands;
 
-  List<ProfileCommand> get commandsToRunAfterApply => [
-    for (final command in commands)
-      if (command.runAfterApply) command,
-  ];
-
   /// The same settings under another name, e.g. to avoid a duplicate when
   /// merging imported profiles.
   NetworkProfile withName(String newName) {

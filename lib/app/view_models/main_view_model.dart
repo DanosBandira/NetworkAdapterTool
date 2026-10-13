@@ -56,15 +56,18 @@ class MainViewModel extends ChangeNotifier {
   final FolderOpener _folderOpener;
   final NetworkProfileLibraryMerger _libraryMerger;
 
-  // Ping results stay visible under their profile until the next ping, an
-  // edit or a delete of that profile. Preset results likewise per preset.
-  final Map<String, List<PingTargetStatus>> _pingStatusesByProfileName = {};
-  final Set<String> _profileNamesBeingPinged = {};
+  // Ping results stay visible under their profile until that target is
+  // pinged again, or the profile is edited or deleted. Targets can be pinged
+  // one by one, so each keeps its own result. Preset results per preset.
+  final Map<String, Map<PingTarget, PingTargetStatus>>
+  _pingStatusesByProfileName = {};
+  final Map<String, Set<PingTarget>> _targetsBeingPingedByProfileName = {};
   final Map<String, List<PresetLineStatus>> _lineStatusesByPresetName = {};
 
-  // Command results behave like ping results. A profile runs its commands
-  // one at a time, so it has at most one active run to stop.
-  final Map<String, List<CommandStatus>> _commandStatusesByProfileName = {};
+  // Command results behave like ping results, keyed by the command's index in
+  // the profile because commands can run one by one too. A profile runs its
+  // commands one at a time, so it has at most one active run to stop.
+  final Map<String, Map<int, CommandStatus>> _commandStatusesByProfileName = {};
   final Map<String, ProfileCommandRun> _activeCommandRunByProfileName = {};
   final Set<String> _profileNamesRunningCommands = {};
   final Set<String> _profileNamesStoppingCommands = {};
@@ -144,29 +147,52 @@ class MainViewModel extends ChangeNotifier {
   bool get canEditProfiles => _libraryIsLoaded;
   bool get canEditPresets => _libraryIsLoaded;
 
-  /// `null` when the profile has not been pinged yet.
+  /// The targets pinged so far, in profile order; `null` when none was.
   List<PingTargetStatus>? pingStatusesFor(String profileName) {
     final statuses = _pingStatusesByProfileName[profileName];
-    return statuses == null ? null : List.unmodifiable(statuses);
+    return statuses == null ? null : List.unmodifiable(statuses.values);
   }
 
+  /// `null` when [target] has not been pinged yet.
+  PingTargetStatus? pingStatusOf(String profileName, PingTarget target) =>
+      _pingStatusesByProfileName[profileName]?[target];
+
   bool isPinging(String profileName) =>
-      _profileNamesBeingPinged.contains(profileName);
+      _targetsBeingPingedByProfileName[profileName]?.isNotEmpty ?? false;
+
+  bool isPingingTarget(String profileName, PingTarget target) =>
+      _targetsBeingPingedByProfileName[profileName]?.contains(target) ?? false;
 
   bool canPingProfile(NetworkProfile profile) =>
       profile.pingTargets.isNotEmpty && !isPinging(profile.name);
 
-  /// `null` when the profile's commands have not run yet.
+  bool canPingTarget(NetworkProfile profile, PingTarget target) =>
+      !isPingingTarget(profile.name, target);
+
+  /// The commands run so far, in profile order; `null` when none ran.
   List<CommandStatus>? commandStatusesFor(String profileName) {
     final statuses = _commandStatusesByProfileName[profileName];
-    return statuses == null ? null : List.unmodifiable(statuses);
+    if (statuses == null) return null;
+    final sortedIndexes = statuses.keys.toList()..sort();
+    return List.unmodifiable([
+      for (final index in sortedIndexes) statuses[index]!,
+    ]);
   }
+
+  /// `null` when the command at [commandIndex] has not run yet.
+  CommandStatus? commandStatusOf(String profileName, int commandIndex) =>
+      _commandStatusesByProfileName[profileName]?[commandIndex];
 
   bool isRunningCommands(String profileName) =>
       _profileNamesRunningCommands.contains(profileName);
 
   bool canRunCommands(NetworkProfile profile) =>
       profile.commands.isNotEmpty && !isRunningCommands(profile.name);
+
+  /// One command at a time per profile, so a single command waits until
+  /// the running ones are done or stopped.
+  bool canRunCommand(NetworkProfile profile) =>
+      !isRunningCommands(profile.name);
 
   bool canStopCommands(String profileName) =>
       isRunningCommands(profileName) &&
@@ -331,7 +357,7 @@ class MainViewModel extends ChangeNotifier {
     // A profile used for two adapters runs its commands once; commands do
     // not know about adapters.
     for (final profile in {...appliedProfiles}) {
-      await _runCommands(profile, profile.commandsToRunAfterApply);
+      await _runCommandsToRunAfterApply(profile);
     }
   }
 
@@ -348,20 +374,26 @@ class MainViewModel extends ChangeNotifier {
   /// updating [pingStatusesFor] as each result comes in.
   Future<void> pingTargetsOf(NetworkProfile profile) async {
     if (!canPingProfile(profile)) return;
-    _startPinging(profile);
-    await for (final result in _pingTargetsChecker.checkTargets(
-      profile.pingTargets,
-    )) {
-      _recordPingResult(profile.name, result);
-    }
-    _profileNamesBeingPinged.remove(profile.name);
-    _notifyListenersUnlessDisposed();
+    await _pingTargets(profile, profile.pingTargets);
+  }
+
+  /// Pings only [target] of [profile]; the other results stay as they are.
+  Future<void> pingTarget(NetworkProfile profile, PingTarget target) async {
+    if (!canPingTarget(profile, target)) return;
+    await _pingTargets(profile, [target]);
   }
 
   /// Runs every command of [profile] one after another, including those not
   /// marked to run after applying. A failing command does not stop the rest.
-  Future<void> runCommandsOf(NetworkProfile profile) =>
-      _runCommands(profile, profile.commands);
+  Future<void> runCommandsOf(NetworkProfile profile) => _runCommands(profile, [
+    for (var index = 0; index < profile.commands.length; index++) index,
+  ]);
+
+  /// Runs only the command at [commandIndex] of [profile].
+  Future<void> runCommand(NetworkProfile profile, int commandIndex) async {
+    if (!canRunCommand(profile)) return;
+    await _runCommands(profile, [commandIndex]);
+  }
 
   /// Stops the running command of [profileName] and skips the ones after it.
   Future<void> stopCommandsOf(String profileName) async {
@@ -622,31 +654,40 @@ class MainViewModel extends ChangeNotifier {
     // for.
     if (outcome is! ProfileApplied) return;
     await pingTargetsOf(profile);
-    await _runCommands(profile, profile.commandsToRunAfterApply);
+    await _runCommandsToRunAfterApply(profile);
   }
+
+  Future<void> _runCommandsToRunAfterApply(NetworkProfile profile) =>
+      _runCommands(profile, [
+        for (final (index, command) in profile.commands.indexed)
+          if (command.runAfterApply) index,
+      ]);
 
   Future<void> _runCommands(
     NetworkProfile profile,
-    List<ProfileCommand> commands,
+    List<int> commandIndexes,
   ) async {
-    if (commands.isEmpty || isRunningCommands(profile.name)) return;
-    _startRunningCommands(profile.name, commands);
-    for (final (index, command) in commands.indexed) {
+    if (commandIndexes.isEmpty || isRunningCommands(profile.name)) return;
+    _startRunningCommands(profile, commandIndexes);
+    for (final index in commandIndexes) {
       if (_profileNamesStoppingCommands.contains(profile.name)) break;
-      await _runCommand(profile.name, index, command);
+      await _runCommand(profile.name, index, profile.commands[index]);
     }
     _finishRunningCommands(profile.name);
   }
 
-  void _startRunningCommands(
-    String profileName,
-    List<ProfileCommand> commands,
-  ) {
-    _profileNamesRunningCommands.add(profileName);
-    _commandStatusesByProfileName[profileName] = [
-      for (final command in commands)
-        CommandStatus(command, CommandState.waiting),
-    ];
+  void _startRunningCommands(NetworkProfile profile, List<int> commandIndexes) {
+    _profileNamesRunningCommands.add(profile.name);
+    final statuses = _commandStatusesByProfileName.putIfAbsent(
+      profile.name,
+      () => {},
+    );
+    for (final index in commandIndexes) {
+      statuses[index] = CommandStatus(
+        profile.commands[index],
+        CommandState.waiting,
+      );
+    }
     _notifyListenersUnlessDisposed();
   }
 
@@ -686,23 +727,19 @@ class MainViewModel extends ChangeNotifier {
   ) {
     final statuses = _commandStatusesByProfileName[profileName];
     // The profile may have been edited or deleted while its commands ran.
-    if (statuses == null || index >= statuses.length) return;
-    _commandStatusesByProfileName[profileName] = [
-      for (final (statusIndex, existingStatus) in statuses.indexed)
-        statusIndex == index ? status : existingStatus,
-    ];
+    if (statuses == null || !statuses.containsKey(index)) return;
+    statuses[index] = status;
   }
 
   // Commands after a stopped one never started.
   void _finishRunningCommands(String profileName) {
     final statuses = _commandStatusesByProfileName[profileName];
     if (statuses != null) {
-      _commandStatusesByProfileName[profileName] = [
-        for (final status in statuses)
-          status.state == CommandState.waiting
-              ? CommandStatus(status.command, CommandState.skipped)
-              : status,
-      ];
+      for (final MapEntry(key: index, value: status) in statuses.entries) {
+        if (status.state == CommandState.waiting) {
+          statuses[index] = CommandStatus(status.command, CommandState.skipped);
+        }
+      }
     }
     _profileNamesRunningCommands.remove(profileName);
     _profileNamesStoppingCommands.remove(profileName);
@@ -766,30 +803,43 @@ class MainViewModel extends ChangeNotifier {
     _notifyListenersUnlessDisposed();
   }
 
-  void _startPinging(NetworkProfile profile) {
-    _profileNamesBeingPinged.add(profile.name);
-    _pingStatusesByProfileName[profile.name] = [
+  Future<void> _pingTargets(
+    NetworkProfile profile,
+    List<PingTarget> targets,
+  ) async {
+    _startPinging(profile, targets);
+    await for (final result in _pingTargetsChecker.checkTargets(targets)) {
+      _recordPingResult(profile.name, result);
+    }
+    _targetsBeingPingedByProfileName[profile.name]?.removeAll(targets);
+    _notifyListenersUnlessDisposed();
+  }
+
+  void _startPinging(NetworkProfile profile, List<PingTarget> targets) {
+    _targetsBeingPingedByProfileName
+        .putIfAbsent(profile.name, () => {})
+        .addAll(targets);
+    final previousStatuses = _pingStatusesByProfileName[profile.name] ?? {};
+    // Rebuilt in profile order, so results list like the targets do.
+    _pingStatusesByProfileName[profile.name] = {
       for (final target in profile.pingTargets)
-        PingTargetStatus(target, PingState.pinging),
-    ];
+        if (targets.contains(target))
+          target: PingTargetStatus(target, PingState.pinging)
+        else
+          target: ?previousStatuses[target],
+    };
     _notifyListenersUnlessDisposed();
   }
 
   void _recordPingResult(String profileName, PingTargetResult result) {
     final statuses = _pingStatusesByProfileName[profileName];
     // The profile may have been edited or deleted while pinging.
-    if (statuses == null) return;
-    _pingStatusesByProfileName[profileName] = [
-      for (final status in statuses)
-        if (status.target == result.target)
-          PingTargetStatus(
-            result.target,
-            result.isReachable ? PingState.reachable : PingState.unreachable,
-            roundTripTime: result.roundTripTime,
-          )
-        else
-          status,
-    ];
+    if (statuses == null || !statuses.containsKey(result.target)) return;
+    statuses[result.target] = PingTargetStatus(
+      result.target,
+      result.isReachable ? PingState.reachable : PingState.unreachable,
+      roundTripTime: result.roundTripTime,
+    );
     _notifyListenersUnlessDisposed();
   }
 

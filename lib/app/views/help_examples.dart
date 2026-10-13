@@ -10,6 +10,8 @@ import 'adapter_card.dart';
 import 'adapter_settings_view.dart';
 import 'apply_arrow_button.dart';
 import 'card_colors.dart';
+import 'collapsible_section.dart';
+import 'label_and_result.dart';
 
 /// Example pictures for the help steps. They use the real cards, dialog and
 /// arrow button with sample data, so they look like the app; they are
@@ -135,8 +137,8 @@ class AdapterColorsExample extends StatelessWidget {
   }
 }
 
-/// Step 3: a selected adapter, a selected profile card with ping results and
-/// the arrow button, numbered in the order the user acts.
+/// Step 3: a selected adapter, a selected profile card and the arrow
+/// button, numbered in the order the user acts.
 class ApplyProfileExample extends StatelessWidget {
   const ApplyProfileExample({super.key});
 
@@ -182,46 +184,16 @@ class ApplyProfileExample extends StatelessWidget {
     );
   }
 
-  Widget _selectedProfileCard(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      color: CardColors.profile(theme.brightness, isSelected: true),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: theme.colorScheme.primary, width: 2),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ListTile(
-            title: const Text('Machine'),
-            subtitle: const Text(
-              '10.100.10.4 / 255.255.255.0 · 2 ping targets',
-            ),
-            trailing: OutlinedButton(
-              onPressed: () {},
-              child: const Text('Ping'),
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Column(
-              children: [
-                _ExamplePingResult('PLC · 10.100.10.1', '3 ms'),
-                _ExamplePingResult('HMI · 10.100.10.2', '<1 ms'),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _selectedProfileCard(BuildContext context) => _exampleProfileCard(
+    context,
+    subtitle: '10.100.10.4 / 255.255.255.0 · 2 ping targets',
+    isSelected: true,
+  );
 }
 
 /// Step 4: ping targets as entered in the profile editor, and the profile
-/// card with the Ping button and a result per target.
+/// card with its open "Ping targets" section: Ping all and a result plus a
+/// ping button per target.
 class PingTargetsExample extends StatelessWidget {
   const PingTargetsExample({super.key});
 
@@ -280,45 +252,30 @@ class PingTargetsExample extends StatelessWidget {
   }
 
   Widget _profileCardWithPingResults(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      color: CardColors.profile(theme.brightness, isSelected: false),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ListTile(
-            title: const Text('Machine'),
-            subtitle: const Text(
-              '10.100.10.4 / 255.255.255.0 · 2 ping targets',
+    return _exampleProfileCard(
+      context,
+      subtitle: '10.100.10.4 / 255.255.255.0 · 2 ping targets',
+      sections: [
+        _exampleCardSection(
+          title: 'Ping targets',
+          actionLabel: 'Ping all',
+          rows: [
+            const _ExamplePingResult('PLC · 10.100.10.1', '3 ms'),
+            _ExamplePingResult(
+              'Printer · 10.100.10.55',
+              'No reply',
+              color: Theme.of(context).colorScheme.error,
             ),
-            trailing: OutlinedButton(
-              onPressed: () {},
-              child: const Text('Ping'),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Column(
-              children: [
-                const _ExamplePingResult('PLC · 10.100.10.1', '3 ms'),
-                _ExamplePingResult(
-                  'Printer · 10.100.10.55',
-                  'No reply',
-                  color: theme.colorScheme.error,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 }
 
 /// Step 5: a command as entered in the profile editor, and the profile card
-/// with the Run button and a result per command.
+/// with its open "Commands" section: Run all and a result plus a run button
+/// per command.
 class CommandsExample extends StatelessWidget {
   const CommandsExample({super.key});
 
@@ -385,41 +342,27 @@ class CommandsExample extends StatelessWidget {
   }
 
   Widget _profileCardWithCommandResults(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      color: CardColors.profile(theme.brightness, isSelected: false),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ListTile(
-            title: const Text('Machine'),
-            subtitle: const Text('10.100.10.4 / 255.255.255.0 · 2 commands'),
-            trailing: OutlinedButton(
-              onPressed: () {},
-              child: const Text('Run'),
+    return _exampleProfileCard(
+      context,
+      subtitle: '10.100.10.4 / 255.255.255.0 · 2 commands',
+      sections: [
+        _exampleCardSection(
+          title: 'Commands',
+          actionLabel: 'Run all',
+          rows: [
+            const _ExampleCommandResult(
+              'Map drive',
+              'Done · 0.4 s',
+              color: _ExampleCommandResult.succeededColor,
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
-            child: Column(
-              children: [
-                _ExampleCommandResult(
-                  'Map drive',
-                  'Done · 0.4 s',
-                  color: _ExampleCommandResult.succeededColor,
-                ),
-                _ExampleCommandResult(
-                  'Start logger',
-                  'Exit code 2 · 3.1 s',
-                  color: theme.colorScheme.error,
-                ),
-              ],
+            _ExampleCommandResult(
+              'Start logger',
+              'Exit code 2 · 3.1 s',
+              color: Theme.of(context).colorScheme.error,
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -559,8 +502,22 @@ class _ExamplePingResult extends StatelessWidget {
         children: [
           Icon(Icons.circle, size: 10, color: color),
           const SizedBox(width: 8),
-          Expanded(child: Text(target, style: style)),
-          Text(result, style: style?.copyWith(color: color)),
+          Expanded(
+            child: LabelAndResult(
+              label: target,
+              labelStyle: style,
+              result: Text(
+                result,
+                style: style?.copyWith(color: color),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const _ExampleSmallButton('Ping'),
+          const SizedBox(
+            width: CollapsibleSection.endInsetToAlignWithHeaderAction,
+          ),
         ],
       ),
     );
@@ -580,19 +537,110 @@ class _ExampleCommandResult extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = Theme.of(context).textTheme.bodySmall;
     return SizedBox(
-      height: 28,
+      height: 36,
       child: Row(
         children: [
           Icon(Icons.circle, size: 10, color: color),
           const SizedBox(width: 8),
-          Expanded(child: Text(name, style: style)),
-          Text(result, style: style?.copyWith(color: color)),
+          Expanded(
+            child: LabelAndResult(
+              label: name,
+              labelStyle: style,
+              result: Text(
+                result,
+                style: style?.copyWith(color: color),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 8),
             child: Icon(Icons.article_outlined, size: 16),
           ),
+          const _ExampleSmallButton('Run'),
+          const SizedBox(
+            width: CollapsibleSection.endInsetToAlignWithHeaderAction,
+          ),
         ],
       ),
+    );
+  }
+}
+
+/// A profile card like the real one: name, summary, edit and delete, and
+/// optional foldable sections below.
+Widget _exampleProfileCard(
+  BuildContext context, {
+  required String subtitle,
+  bool isSelected = false,
+  List<Widget> sections = const [],
+}) {
+  final theme = Theme.of(context);
+  return Card(
+    elevation: 0,
+    margin: EdgeInsets.zero,
+    color: CardColors.profile(theme.brightness, isSelected: isSelected),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+      side: isSelected
+          ? BorderSide(color: theme.colorScheme.primary, width: 2)
+          : BorderSide.none,
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListTile(
+          title: const Text('Machine'),
+          subtitle: Text(subtitle),
+          trailing: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.edit_outlined),
+              SizedBox(width: 16),
+              Icon(Icons.delete_outline),
+            ],
+          ),
+        ),
+        ...sections,
+      ],
+    ),
+  );
+}
+
+/// An open section of a profile card with its "all" button.
+Widget _exampleCardSection({
+  required String title,
+  required String actionLabel,
+  required List<Widget> rows,
+}) {
+  return CollapsibleSection(
+    title: title,
+    isExpanded: true,
+    onToggle: () {},
+    margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+    headerAction: OutlinedButton(
+      onPressed: () {},
+      style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+      child: Text(actionLabel),
+    ),
+    children: rows,
+  );
+}
+
+class _ExampleSmallButton extends StatelessWidget {
+  const _ExampleSmallButton(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: () {},
+      style: OutlinedButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(label),
     );
   }
 }

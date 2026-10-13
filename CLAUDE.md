@@ -95,6 +95,7 @@ lib/
         ├── help_examples.dart                 (example pictures per help step)
         ├── import_user_data_view.dart         (merge/replace + adapter mapping)
         ├── ipv4_settings_fields.dart          (shared DHCP/static + IPv4 fields)
+        ├── label_and_result.dart              (row text: label left, result right)
         ├── left_arrow_border.dart
         ├── network_profile_editor_view.dart
         └── network_preset_editor_view.dart
@@ -229,7 +230,9 @@ prefix length to a dotted subnet mask. The reader sits behind
 - Use `Platform.environment['APPDATA']` for the profile path instead of
   `path_provider`, which would add a company/app subfolder.
 - Ping targets: pinged automatically after a successful apply (`ProfileApplied`)
-  and on demand with the ping button on a profile card. Each target is retried
+  and on demand from the profile card ("Ping all", or one target with its own
+  button; other results stay, so the view model keeps a status per target
+  and tracks which targets are being pinged). Each target is retried
   for up to 10 s (1 s timeout per attempt, 0.5 s pause after a failure),
   because link, ARP and devices need a few seconds after switching. Results
   show under the profile card and are dropped when the profile is edited or
@@ -299,8 +302,11 @@ prefix length to a dotted subnet mask. The reader sits behind
     remaining commands.
   - Commands of a profile run one after another; a failing one does not stop
     the rest. After applying they start once pinging is done (a share or tool
-    needs the link the ping waits for), only those with `runAfterApply`; the
-    Run button runs all. Presets run them once per applied profile, after the
+    needs the link the ping waits for), only those with `runAfterApply`;
+    "Run all" runs all and a row's Run button one (user request, 2026-10-13: not always
+    all wanted). Statuses are keyed by the command's index in the profile;
+    one command runs at a time per profile, so the row Run buttons are disabled while any of
+    its commands run. Presets run them once per applied profile, after the
     pings.
   - Result per command under the profile card (with an output dialog); the
     status line shows the summary plus the last 4 output lines. Exit code 0
@@ -340,7 +346,9 @@ prefix length to a dotted subnet mask. The reader sits behind
   zip and create a shortcut to the exe; the exe alone never starts, it loads
   the rest from its own folder. The build scripts end with a colored
   success/failure line and wait for a key (`-NoPause` skips that) and exit
-  with code 1 on failure.
+  with code 1 on failure. After a successful build they ask whether to start
+  the app from its build folder (Y/J starts it, any other key closes; user
+  request, 2026-10-13, to test right away); `-Run` starts it without asking.
   `build_release.ps1` passes `--no-tree-shake-icons`: on 2026-10-12 the
   release build kept a tree-shaken `MaterialIcons-Regular.otf` from 3 days
   earlier, so newly used icons (collapse arrow, error icon) were silently
@@ -427,9 +435,16 @@ prefix length to a dotted subnet mask. The reader sits behind
   folder; a picked file inside the plugin folder is stored relative,
   elsewhere absolute), arguments (typed like a command line), "Run after applying this profile" checkbox, and the plugin folder
   path with an Open button (`ExplorerFolderOpener`).
-- Profile card with commands: "Run" button (becomes "Stop" while running);
-  per command a row with state dot, name, "Running · 12 s" / "Done · 0.4 s" /
-  "Exit code 2 · 3.1 s" / "Stopped" / "File not found", and an output button.
+- Profile card: header with name, summary, Edit and Delete. Below it, when
+  the profile has them, foldable "Ping targets" and "Commands" sections
+  (`CollapsibleSection`, folded by default; the folded header shows "2 of 3
+  replied" / "1 of 2 succeeded" / "Running…"). The header holds "Ping all"
+  or "Run all" (which also opens the section; "Run all" becomes "Stop"
+  while running). Every target and command is listed with state dot
+  (outline = not run yet), name, result ("3 ms", "Running · 12 s",
+  "Done · 0.4 s", "Exit code 2 · 3.1 s", "Stopped", "File not found"), an
+  output button for commands and its own "Ping"/"Run" text button (user wanted text, not symbols). The preset card
+  repeats the ping results without the buttons.
 - On the first start (`helpWasShown` false after a successful load) the help
   opens by itself: `MainView` listens to `MainViewModel.shouldShowHelpOnStart`
   and calls `markHelpAsShown()`, which saves the flag right away (not when
@@ -440,7 +455,7 @@ prefix length to a dotted subnet mask. The reader sits behind
   label, plus a few points: 1 double-click to change an adapter (real
   `AdapterCard` + real `AdapterSettingsView`), 2 adapter colors, 3 profiles
   + arrow button, 4 ping targets and 5 commands (each: editor entry + card
-  with Ping/Run and results),
+  with the open section, Ping all/Run all and per-item buttons),
   6 presets, 7 import/export, 8 good to know. Examples reuse
   the real widgets (`AdapterCard`, `ApplyArrowButton`, `CardColors`) with
   sample data inside `IgnorePointer`, so they keep matching the app; chosen

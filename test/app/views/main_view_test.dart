@@ -8,6 +8,7 @@ import 'package:network_adapter_tool/core/commands/profile_command_runner.dart';
 import 'package:network_adapter_tool/core/models/addressing_mode.dart';
 import 'package:network_adapter_tool/core/models/network_adapter.dart';
 import 'package:network_adapter_tool/core/models/network_profile.dart';
+import 'package:network_adapter_tool/core/models/ping_target.dart';
 import 'package:network_adapter_tool/core/models/profile_command.dart';
 import 'package:network_adapter_tool/core/network_preset_applier.dart';
 import 'package:network_adapter_tool/core/network_profile_applier.dart';
@@ -64,7 +65,12 @@ void main() {
       repository: repository,
       applier: applier,
       presetApplier: NetworkPresetApplier(applier),
-      pingTargetsChecker: PingTargetsChecker(ScriptedHostPinger()),
+      pingTargetsChecker: PingTargetsChecker(
+        ScriptedHostPinger({
+          '10.100.10.1': [const Duration(milliseconds: 3)],
+          '10.100.10.2': [const Duration(milliseconds: 5)],
+        }),
+      ),
       libraryTransfer: InMemoryNetworkProfileLibraryTransfer(),
       profileCommandRunner: ProfileCommandRunner(
         launcher: programLauncher,
@@ -206,7 +212,8 @@ void main() {
     ]) {
       await tester.tap(find.text('Next'));
       await tester.pumpAndSettle();
-      expect(find.text(stepTitle), findsOneWidget);
+      // A title like "Commands" also heads a section in the example.
+      expect(find.text(stepTitle), findsWidgets);
     }
 
     expect(find.text('Step 8 of 8'), findsOneWidget);
@@ -422,10 +429,10 @@ void main() {
     await tester.tap(find.byTooltip('New profile'));
     await tester.pumpAndSettle();
     expect(find.text('Add command'), findsNothing);
-    expect(find.text('No commands'), findsOneWidget);
+    expect(find.textContaining('No commands'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('Commands'));
-    await tester.tap(find.text('Commands'));
+    await tester.ensureVisible(find.textContaining('Commands'));
+    await tester.tap(find.textContaining('Commands'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Add command'));
     await tester.tap(find.text('Add command'));
@@ -443,11 +450,11 @@ void main() {
 
     await tester.tap(find.byTooltip('New profile'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Network settings'));
+    await tester.tap(find.textContaining('Network settings'));
     await tester.pumpAndSettle();
     final dialog = find.byType(AlertDialog);
     expect(
-      find.descendant(of: dialog, matching: find.text('Static')),
+      find.descendant(of: dialog, matching: find.textContaining('Static')),
       findsOneWidget,
     );
     expect(
@@ -478,7 +485,7 @@ void main() {
 
     expect(find.text('DHCP · 1 command'), findsOneWidget);
     await tester.runAsync(() async {
-      await tester.tap(find.text('Run'));
+      await tester.tap(find.text('Run all'));
       await pumpEventQueue();
     });
     await tester.pump();
@@ -487,5 +494,58 @@ void main() {
     expect(find.textContaining('Done ·'), findsOneWidget);
     expect(find.byTooltip('Show output'), findsOneWidget);
     expect(find.textContaining('Tool started'), findsOneWidget);
+  });
+
+  testWidgets('folds ping targets and pings them all or one by one', (
+    tester,
+  ) async {
+    repository.storedLibrary = repository.storedLibrary.copyWith(
+      profiles: [
+        const NetworkProfile(
+          name: 'Line 1',
+          addressingMode: AddressingMode.dhcp,
+          pingTargets: [
+            PingTarget(ipAddress: '10.100.10.1', name: 'PLC'),
+            PingTarget(ipAddress: '10.100.10.2', name: 'HMI'),
+          ],
+        ),
+      ],
+    );
+    await showApp(tester);
+
+    expect(find.textContaining('2 targets'), findsOneWidget);
+    expect(find.text('PLC · 10.100.10.1'), findsNothing);
+
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Ping all'));
+      await pumpEventQueue();
+    });
+    await tester.pump();
+
+    expect(find.text('PLC · 10.100.10.1'), findsOneWidget);
+    expect(find.text('3 ms'), findsOneWidget);
+    expect(find.text('5 ms'), findsOneWidget);
+    await tester.pumpAndSettle();
+    Rect buttonRect(String label) => tester.getRect(
+      find
+          .ancestor(of: find.text(label), matching: find.byType(OutlinedButton))
+          .first,
+    );
+    expect(buttonRect('Ping').right, buttonRect('Ping all').right);
+
+    await tester.tap(find.textContaining('Ping targets'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('2 of 2 replied'), findsOneWidget);
+
+    await tester.tap(find.textContaining('Ping targets'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      await tester.tap(find.byTooltip('Ping 10.100.10.2'));
+      await pumpEventQueue();
+    });
+    await tester.pump();
+
+    expect(find.text('3 ms'), findsOneWidget);
+    expect(find.text('5 ms'), findsOneWidget);
   });
 }
