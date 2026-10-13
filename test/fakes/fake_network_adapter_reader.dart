@@ -6,16 +6,23 @@ import 'package:network_adapter_tool/core/models/network_adapter.dart';
 ///
 /// After the last snapshot it keeps returning that one.
 class FakeNetworkAdapterReader implements NetworkAdapterReader {
-  FakeNetworkAdapterReader(this._snapshotsPerRead, {this.readError});
+  FakeNetworkAdapterReader(
+    this._snapshotsPerRead, {
+    this.readError,
+    this.otherAdapters = const [],
+  });
 
   final List<NetworkAdapter?> _snapshotsPerRead;
   final NetworkAdapterReadException? readError;
+
+  /// Listed by [readAllAdapters] after the scripted adapter.
+  final List<NetworkAdapter> otherAdapters;
   int readCount = 0;
 
   @override
   Future<List<NetworkAdapter>> readAllAdapters() async {
     final adapter = await readAdapterByName('');
-    return [?adapter];
+    return [?adapter, ...otherAdapters];
   }
 
   @override

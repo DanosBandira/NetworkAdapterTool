@@ -75,6 +75,7 @@ lib/
 │   │   ├── json_network_profile_library_transfer.dart
 │   │   ├── network_profile_library_merger.dart     (merge with "(imported)" renames)
 │   │   ├── network_profile_validator.dart
+│   │   ├── network_profile_comparer.dart       (profile vs adapter settings)
 │   │   └── network_preset_validator.dart
 │   ├── network_profile_applier.dart
 │   └── network_preset_applier.dart
@@ -121,7 +122,8 @@ tool/build_release.ps1                         (release build + dist\NetworkAdap
 | `NetworkPresetValidator` | Preset name unique, ≥1 line, lines complete, adapter once, profile exists | – |
 | `NetworkPresetApplier` | Apply preset lines one by one via `NetworkProfileApplier`; a failing line does not stop the rest | profile applier |
 | `NetworkProfileValidator` | Validate IP, subnet mask, gateway in same subnet, DNS addresses | – |
-| `NetworkProfileApplier` | Use case: validate, apply, verify the result | validator, configurator, reader |
+| `NetworkProfileApplier` | Use case: validate, apply, verify the result | validator, configurator, reader, comparer |
+| `NetworkProfileComparer` | Compare a profile with an adapter's settings (DHCP: mode only; static: IP, mask, gateway, DNS in order); used for verification and the active profile on adapter cards | – |
 | `PingExeHostPinger` | One echo request via `ping.exe`; reply = exit code 0 and `TTL=` in the output | `CommandRunner` |
 | `PingTargetsChecker` | Ping all targets concurrently, retry each until it answers or 10 s pass, emit results as they resolve | `HostPinger` |
 | `PluginPathResolver` | Absolute command path stays; anything else is looked up in the plugins folder next to the exe | – |
@@ -213,8 +215,17 @@ prefix length to a dotted subnet mask. The reader sits behind
   because netsh can report success before the setting is active. It retries
   the read (default 3 attempts, 1 s apart) and returns a sealed
   `ApplyProfileOutcome` (`ProfileApplied`, `ProfileInvalid`,
-  `ProfileRejectedBySystem`, `ProfileNotActive` with per-setting mismatches,
-  `ProfileNotVerified`) so the UI must handle every case.
+  `ProfileRejectedBySystem`, `ProfileAddressInUse`, `ProfileNotActive` with
+  per-setting mismatches, `ProfileNotVerified`) so the UI must handle every
+  case.
+- Windows allows an IPv4 address on one adapter only, also when the adapter
+  holding it is disconnected; netsh then fails with exit code 1 and "The
+  object already exists" (found 2026-10-13: "Ethernet" kept 10.100.10.4
+  while the user applied the same profile to another adapter). After a
+  rejection of a static profile the applier reads all adapters and returns
+  `ProfileAddressInUse` naming the other adapter, so the message says what
+  to do; no extra read on the success path, no parsing of localized netsh
+  text. The app does not free the address on the other adapter by itself.
 - A DHCP profile is verified on addressing mode only; right after switching
   the adapter may still hold an APIPA address.
 - Windows does not disable DHCP on a disconnected adapter: switching a
@@ -383,6 +394,16 @@ prefix length to a dotted subnet mask. The reader sits behind
 - Adapter cards: light green background when connected, light red otherwise
   (muted variants in dark mode). The selected card gets a darker shade of its
   own color plus a primary-colored border.
+- Adapter cards show the active profile in bold under the status
+  (`Profile "X" active`, user request 2026-10-13), in dark yellow
+  (`CardColors.activeProfileText`) to match the profile cards.
+  `MainViewModel.activeProfileNameOf`: the saved profile last applied to the
+  adapter in this session (single apply or preset line), while the adapter
+  still matches it; otherwise the first static profile whose settings match
+  exactly (works after a restart or changes outside the app). DHCP profiles
+  are never guessed, every DHCP profile would match a DHCP adapter; the
+  last-applied record is not stored, so after a restart a DHCP adapter shows
+  no profile. Manual settings clear the record; renames follow it.
 - Profile cards: light yellow background (muted in dark mode); the selected
   card gets a darker yellow plus the border.
 - Each panel has a search field: adapters match on name, description and IP;

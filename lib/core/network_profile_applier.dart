@@ -4,7 +4,11 @@ import 'models/addressing_mode.dart';
 import 'models/ipv4_address.dart';
 import 'models/network_adapter.dart';
 import 'models/network_profile.dart';
+import 'profiles/network_profile_comparer.dart';
 import 'profiles/network_profile_validator.dart';
+
+export 'profiles/network_profile_comparer.dart'
+    show AdapterSetting, AdapterSettingMismatch;
 
 /// Use case: apply a profile to an adapter and confirm it took effect.
 ///
@@ -18,6 +22,7 @@ class NetworkProfileApplier {
     required this._validator,
     required this._configurator,
     required this._reader,
+    this._comparer = const NetworkProfileComparer(),
     this.verificationAttempts = 3,
     this.delayBetweenVerificationAttempts = const Duration(seconds: 1),
   });
@@ -30,6 +35,7 @@ class NetworkProfileApplier {
   final NetworkProfileValidator _validator;
   final NetworkAdapterConfigurator _configurator;
   final NetworkAdapterReader _reader;
+  final NetworkProfileComparer _comparer;
 
   Future<ApplyProfileOutcome> applyProfileToAdapter(
     NetworkProfile profile,
@@ -50,7 +56,7 @@ class NetworkProfileApplier {
     try {
       await _configurator.applyProfileToAdapter(profile, adapterName);
     } on NetworkConfigurationException catch (error) {
-      return ProfileRejectedBySystem(error);
+      return _explainRejection(profile, adapterName, error);
     }
 
     return _verifyProfileIsActive(profile, adapterName);
@@ -77,6 +83,41 @@ class NetworkProfileApplier {
     } on NetworkAdapterReadException {
       return false;
     }
+  }
+
+  // Windows allows an IPv4 address on one adapter only; netsh then fails with
+  // "The object already exists", also when the other adapter is
+  // disconnected. netsh text is localized, so instead of parsing it the
+  // other adapters are checked for the address, only after a rejection.
+  Future<ApplyProfileOutcome> _explainRejection(
+    NetworkProfile profile,
+    String adapterName,
+    NetworkConfigurationException error,
+  ) async {
+    final ipAddress = profile.ipAddress;
+    if (profile.addressingMode != AddressingMode.staticIp ||
+        ipAddress == null) {
+      return ProfileRejectedBySystem(error);
+    }
+    try {
+      final adapters = await _reader.readAllAdapters();
+      for (final adapter in adapters) {
+        final isOtherAdapter =
+            adapter.name.toLowerCase() != adapterName.toLowerCase();
+        if (isOtherAdapter &&
+            Ipv4Address.tryParse(adapter.ipAddress ?? '') ==
+                Ipv4Address.tryParse(ipAddress)) {
+          return ProfileAddressInUse(
+            ipAddress: ipAddress,
+            otherAdapterName: adapter.name,
+            error: error,
+          );
+        }
+      }
+    } on NetworkAdapterReadException {
+      // The plain rejection below still tells the user what Windows said.
+    }
+    return ProfileRejectedBySystem(error);
   }
 
   Future<ApplyProfileOutcome> _verifyProfileIsActive(
@@ -113,118 +154,8 @@ class NetworkProfileApplier {
         ),
       ];
     }
-    return [
-      ..._findAddressingModeMismatch(profile, adapter),
-      if (profile.addressingMode == AddressingMode.staticIp)
-        ..._findStaticSettingMismatches(profile, adapter),
-    ];
+    return _comparer.findMismatches(profile, adapter);
   }
-
-  Iterable<AdapterSettingMismatch> _findAddressingModeMismatch(
-    NetworkProfile profile,
-    NetworkAdapter adapter,
-  ) sync* {
-    if (adapter.addressingMode != profile.addressingMode) {
-      yield AdapterSettingMismatch(
-        setting: AdapterSetting.addressingMode,
-        expected: profile.addressingMode.name,
-        actual: adapter.addressingMode?.name,
-      );
-    }
-  }
-
-  // DHCP profiles stop at the addressing mode: the address itself comes from
-  // the DHCP server and may still be a temporary APIPA address right after
-  // switching.
-  Iterable<AdapterSettingMismatch> _findStaticSettingMismatches(
-    NetworkProfile profile,
-    NetworkAdapter adapter,
-  ) sync* {
-    yield* _findAddressMismatch(
-      AdapterSetting.ipAddress,
-      profile.ipAddress,
-      adapter.ipAddress,
-    );
-    yield* _findAddressMismatch(
-      AdapterSetting.subnetMask,
-      profile.subnetMask,
-      adapter.subnetMask,
-    );
-    yield* _findAddressMismatch(
-      AdapterSetting.defaultGateway,
-      _blankAsNull(profile.defaultGateway),
-      adapter.defaultGateway,
-    );
-    yield* _findDnsServersMismatch(profile.dnsServers, adapter.dnsServers);
-  }
-
-  Iterable<AdapterSettingMismatch> _findAddressMismatch(
-    AdapterSetting setting,
-    String? expected,
-    String? actual,
-  ) sync* {
-    if (!_isSameAddress(expected, actual)) {
-      yield AdapterSettingMismatch(
-        setting: setting,
-        expected: expected,
-        actual: actual,
-      );
-    }
-  }
-
-  Iterable<AdapterSettingMismatch> _findDnsServersMismatch(
-    List<String> expected,
-    List<String> actual,
-  ) sync* {
-    final sameServersInSameOrder =
-        expected.length == actual.length &&
-        [
-          for (var index = 0; index < expected.length; index++)
-            _isSameAddress(expected[index], actual[index]),
-        ].every((isSame) => isSame);
-    if (!sameServersInSameOrder) {
-      yield AdapterSettingMismatch(
-        setting: AdapterSetting.dnsServers,
-        expected: expected.join(', '),
-        actual: actual.join(', '),
-      );
-    }
-  }
-
-  bool _isSameAddress(String? first, String? second) {
-    if (first == null || second == null) return first == second;
-    return Ipv4Address.tryParse(first) == Ipv4Address.tryParse(second);
-  }
-
-  String? _blankAsNull(String? text) =>
-      text == null || text.trim().isEmpty ? null : text;
-}
-
-/// The adapter setting that differs from the applied profile.
-enum AdapterSetting {
-  adapter,
-  addressingMode,
-  ipAddress,
-  subnetMask,
-  defaultGateway,
-  dnsServers,
-}
-
-class AdapterSettingMismatch {
-  const AdapterSettingMismatch({
-    required this.setting,
-    required this.expected,
-    required this.actual,
-  });
-
-  final AdapterSetting setting;
-  final String? expected;
-  final String? actual;
-
-  @override
-  String toString() =>
-      '${setting.name}: expected ${expected ?? 'none'}, '
-      'actual ${actual ?? 'none'}';
 }
 
 /// Result of [NetworkProfileApplier.applyProfileToAdapter]. Sealed so the UI
@@ -263,6 +194,20 @@ final class ProfileRejectedBySystem extends ApplyProfileOutcome {
 
 /// The commands succeeded, but the adapter still differs from the profile
 /// after all verification attempts.
+/// Windows refused the profile because its IP address is already set on
+/// another adapter (possibly a disconnected one).
+final class ProfileAddressInUse extends ApplyProfileOutcome {
+  const ProfileAddressInUse({
+    required this.ipAddress,
+    required this.otherAdapterName,
+    required this.error,
+  });
+
+  final String ipAddress;
+  final String otherAdapterName;
+  final NetworkConfigurationException error;
+}
+
 final class ProfileNotActive extends ApplyProfileOutcome {
   const ProfileNotActive(this.mismatches);
 

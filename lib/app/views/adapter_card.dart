@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../view_models/network_adapter_view_model.dart';
+import 'card_colors.dart';
 
 /// One adapter in the adapter grid: green when connected, red otherwise,
-/// darker with a border when selected. Also shown as an example in the
-/// help overlay.
+/// darker with a border when selected, with the active profile in bold.
+/// Also shown as an example in the help overlay.
 class AdapterCard extends StatelessWidget {
   const AdapterCard({
     super.key,
@@ -12,6 +13,7 @@ class AdapterCard extends StatelessWidget {
     required this.isSelected,
     required this.onTap,
     required this.onDoubleTap,
+    this.activeProfileName,
   });
 
   static const _connectedBackgroundLight = Color(0xFFE6F4EA);
@@ -29,6 +31,9 @@ class AdapterCard extends StatelessWidget {
 
   /// Opens the adapter settings dialog; `null` while adapters are busy.
   final VoidCallback? onDoubleTap;
+
+  /// The saved profile whose settings the adapter has; `null` for none.
+  final String? activeProfileName;
 
   @override
   Widget build(BuildContext context) {
@@ -87,6 +92,18 @@ class AdapterCard extends StatelessWidget {
                     color: statusColor,
                   ),
                 ),
+                if (activeProfileName case final profileName?) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Profile "$profileName" active',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: CardColors.activeProfileText(theme.brightness),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
                 const SizedBox(height: 6),
                 Text(
                   adapter.description,

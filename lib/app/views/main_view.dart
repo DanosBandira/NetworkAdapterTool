@@ -211,6 +211,7 @@ class _AdapterGrid extends StatelessWidget {
                     onDoubleTap: viewModel.canConfigureAdapters
                         ? () => _openAdapterSettings(context, adapter)
                         : null,
+                    activeProfileName: viewModel.activeProfileNameOf(adapter),
                   ),
                 ),
             ],

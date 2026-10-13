@@ -120,7 +120,10 @@ class AdapterColorsExample extends StatelessWidget {
             width: 240,
             child: HelpCallout(
               label: 'Connected',
-              child: _exampleAdapterCard(_connectedDhcpWifi),
+              child: _exampleAdapterCard(
+                _connectedDhcpWifi,
+                activeProfileName: 'Office',
+              ),
             ),
           ),
           const SizedBox(width: 24),
@@ -645,12 +648,16 @@ class _ExampleSmallButton extends StatelessWidget {
   }
 }
 
-Widget _exampleAdapterCard(NetworkAdapterViewModel adapter) {
+Widget _exampleAdapterCard(
+  NetworkAdapterViewModel adapter, {
+  String? activeProfileName,
+}) {
   return AdapterCard(
     adapter: adapter,
     isSelected: false,
     onTap: () {},
     onDoubleTap: null,
+    activeProfileName: activeProfileName,
   );
 }
 

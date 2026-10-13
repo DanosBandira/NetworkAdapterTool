@@ -223,6 +223,9 @@ const _helpSteps = [
     points: [
       'Every network adapter of this PC.',
       'Green card = connected, red card = not connected.',
+      'In bold: the profile whose settings the adapter has now. A static '
+          'profile is recognized by its settings, a DHCP profile only after '
+          'you applied it.',
       'Use the refresh button to read the adapters again, e.g. after '
           'plugging in a cable. Reading takes a few seconds.',
     ],

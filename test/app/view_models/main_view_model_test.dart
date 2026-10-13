@@ -639,6 +639,83 @@ void main() {
     });
   });
 
+  group('active profile', () {
+    String? activeProfileNameOf(MainViewModel viewModel) =>
+        viewModel.activeProfileNameOf(viewModel.adapters.single);
+
+    test('recognizes a static profile by its settings', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([
+          ethernet(
+            addressingMode: AddressingMode.staticIp,
+            ipAddress: '192.168.0.10',
+            subnetMask: '255.255.255.0',
+          ),
+        ]),
+      );
+
+      expect(activeProfileNameOf(viewModel), machineProfile.name);
+    });
+
+    test('does not guess a DHCP profile', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+
+      expect(activeProfileNameOf(viewModel), isNull);
+    });
+
+    test('shows the DHCP profile that was applied', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      viewModel
+        ..selectAdapter('Ethernet')
+        ..selectProfile(officeProfile.name);
+
+      await viewModel.applySelectedProfileToSelectedAdapter();
+
+      expect(activeProfileNameOf(viewModel), officeProfile.name);
+    });
+
+    test('forgets the applied profile after manual settings', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      viewModel
+        ..selectAdapter('Ethernet')
+        ..selectProfile(officeProfile.name);
+      await viewModel.applySelectedProfileToSelectedAdapter();
+
+      await viewModel.applyManualSettings(
+        const NetworkProfile(
+          name: MainViewModel.manualSettingsName,
+          addressingMode: AddressingMode.dhcp,
+        ),
+        'Ethernet',
+      );
+
+      expect(activeProfileNameOf(viewModel), isNull);
+    });
+
+    test('follows a rename of the applied profile', () async {
+      final viewModel = await initializedViewModel(
+        FakeNetworkAdapterReader([ethernet()]),
+      );
+      viewModel
+        ..selectAdapter('Ethernet')
+        ..selectProfile(officeProfile.name);
+      await viewModel.applySelectedProfileToSelectedAdapter();
+
+      await viewModel.saveProfile(
+        officeProfile.withName('Office 2'),
+        originalProfile: officeProfile,
+      );
+
+      expect(activeProfileNameOf(viewModel), 'Office 2');
+    });
+  });
+
   group('commands', () {
     const mapDrive = ProfileCommand(
       path: 'map_drive.ps1',

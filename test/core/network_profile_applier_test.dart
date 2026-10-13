@@ -235,8 +235,39 @@ void main() {
 
       expect(outcome, isA<ProfileRejectedBySystem>());
       expect((outcome as ProfileRejectedBySystem).error, same(netshError));
-      // Only the read before applying; no verification reads.
-      expect(reader.readCount, 1);
+      // The read before applying and one looking for the address on other
+      // adapters; no verification reads.
+      expect(reader.readCount, 2);
+    });
+
+    test('names the adapter that already has the address', () async {
+      configurator = RecordingNetworkAdapterConfigurator(
+        errorToThrow: const NetworkConfigurationException(
+          failedCommand: 'netsh.exe interface ipv4 set address',
+          exitCode: 1,
+          output: 'The object already exists.',
+        ),
+      );
+      final reader = FakeNetworkAdapterReader(
+        [adapterSnapshot(addressingMode: AddressingMode.dhcp)],
+        otherAdapters: [
+          const NetworkAdapter(
+            name: 'Ethernet 3',
+            description: 'USB LAN',
+            status: NetworkAdapterStatus.disconnected,
+            addressingMode: AddressingMode.staticIp,
+            ipAddress: '192.168.0.10',
+            subnetMask: '255.255.255.0',
+          ),
+        ],
+      );
+
+      final outcome = await applierReading(reader)
+          .applyProfileToAdapter(staticProfile, adapterName);
+
+      expect(outcome, isA<ProfileAddressInUse>());
+      expect((outcome as ProfileAddressInUse).otherAdapterName, 'Ethernet 3');
+      expect(outcome.ipAddress, '192.168.0.10');
     });
 
     test(

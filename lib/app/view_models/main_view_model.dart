@@ -14,6 +14,7 @@ import '../../core/models/ping_target.dart';
 import '../../core/models/profile_command.dart';
 import '../../core/network_preset_applier.dart';
 import '../../core/network_profile_applier.dart';
+import '../../core/profiles/network_profile_comparer.dart';
 import '../../core/profiles/network_profile_library_merger.dart';
 import '../../core/reachability/ping_targets_checker.dart';
 import 'network_adapter_view_model.dart';
@@ -35,6 +36,7 @@ class MainViewModel extends ChangeNotifier {
     required this._profileCommandRunner,
     required this._folderOpener,
     this._libraryMerger = const NetworkProfileLibraryMerger(),
+    this._profileComparer = const NetworkProfileComparer(),
   });
 
   // Applied by the "Switch to DHCP" shortcut; never stored.
@@ -55,6 +57,12 @@ class MainViewModel extends ChangeNotifier {
   final ProfileCommandRunner _profileCommandRunner;
   final FolderOpener _folderOpener;
   final NetworkProfileLibraryMerger _libraryMerger;
+  final NetworkProfileComparer _profileComparer;
+
+  // Which saved profile was last applied to which adapter, in this session.
+  // Needed for DHCP profiles: every DHCP adapter matches every DHCP profile,
+  // so only the apply itself tells which one the user chose.
+  final Map<String, String> _lastAppliedProfileNameByAdapterName = {};
 
   // Ping results stay visible under their profile until that target is
   // pinged again, or the profile is edited or deleted. Targets can be pinged
@@ -197,6 +205,30 @@ class MainViewModel extends ChangeNotifier {
   bool canStopCommands(String profileName) =>
       isRunningCommands(profileName) &&
       !_profileNamesStoppingCommands.contains(profileName);
+
+  /// The saved profile whose settings [adapter] has now, for its card;
+  /// `null` when none matches.
+  ///
+  /// The profile last applied to the adapter wins while the adapter still
+  /// matches it. Otherwise a static profile with exactly these settings is
+  /// recognized (also after a restart or a change outside the app); a DHCP
+  /// profile is never guessed, since every DHCP profile would match.
+  String? activeProfileNameOf(NetworkAdapterViewModel adapter) {
+    final lastAppliedProfile = _profileNamed(
+      _lastAppliedProfileNameByAdapterName[adapter.name],
+    );
+    if (lastAppliedProfile != null &&
+        _profileComparer.isActiveOn(lastAppliedProfile, adapter.adapter)) {
+      return lastAppliedProfile.name;
+    }
+    for (final profile in _library.profiles) {
+      if (profile.addressingMode == AddressingMode.staticIp &&
+          _profileComparer.isActiveOn(profile, adapter.adapter)) {
+        return profile.name;
+      }
+    }
+    return null;
+  }
 
   /// Where a command path without a folder (e.g. `tool.exe`) is looked up.
   String get pluginFolderPath => _profileCommandRunner.pluginFolderPath;
@@ -452,6 +484,7 @@ class MainViewModel extends ChangeNotifier {
       // Results of the old targets no longer describe the edited profile.
       _pingStatusesByProfileName.remove(originalName);
       _commandStatusesByProfileName.remove(originalName);
+      _followRenameInLastAppliedProfiles(originalName, savedProfile.name);
     }
     notifyListeners();
   }
@@ -643,6 +676,7 @@ class MainViewModel extends ChangeNotifier {
 
     final outcome = await _applier.applyProfileToAdapter(profile, adapterName);
     _showUpdatedAdapterAfter(outcome);
+    _rememberAppliedProfile(outcome, profile, adapterName);
     _statusMessage = _describeOutcome(outcome, profile.name, adapterName);
     _isApplying = false;
     notifyListeners();
@@ -764,7 +798,17 @@ class MainViewModel extends ChangeNotifier {
     PresetAssignmentResult result,
   ) {
     final outcome = result.outcome;
-    if (outcome != null) _showUpdatedAdapterAfter(outcome);
+    if (outcome != null) {
+      _showUpdatedAdapterAfter(outcome);
+      final profile = result.profile;
+      if (profile != null) {
+        _rememberAppliedProfile(
+          outcome,
+          profile,
+          result.assignment.adapterName,
+        );
+      }
+    }
     final message = outcome == null
         ? 'Profile "${result.assignment.profileName}" no longer exists.'
         : _describeOutcome(
@@ -849,6 +893,32 @@ class MainViewModel extends ChangeNotifier {
     if (!_isDisposed) notifyListeners();
   }
 
+  void _followRenameInLastAppliedProfiles(
+    String? originalName,
+    String newName,
+  ) {
+    if (originalName == null) return;
+    _lastAppliedProfileNameByAdapterName.updateAll(
+      (adapterName, profileName) =>
+          profileName == originalName ? newName : profileName,
+    );
+  }
+
+  // Manual settings and the DHCP shortcut are not saved profiles; for those
+  // the card falls back to recognizing a static profile by its settings.
+  void _rememberAppliedProfile(
+    ApplyProfileOutcome outcome,
+    NetworkProfile profile,
+    String adapterName,
+  ) {
+    if (outcome is! ProfileApplied) return;
+    if (_library.profiles.contains(profile)) {
+      _lastAppliedProfileNameByAdapterName[adapterName] = profile.name;
+    } else {
+      _lastAppliedProfileNameByAdapterName.remove(adapterName);
+    }
+  }
+
   // The applier already read the adapter back; reuse that instead of
   // spending another few seconds on a full refresh.
   void _showUpdatedAdapterAfter(ApplyProfileOutcome outcome) {
@@ -880,6 +950,13 @@ class MainViewModel extends ChangeNotifier {
         'to a static address while a cable is connected. Connect it, refresh '
         'and try again.',
       ),
+      ProfileAddressInUse(:final ipAddress, :final otherAdapterName) =>
+        StatusMessage.error(
+          '$ipAddress is already set on adapter "$otherAdapterName". Windows '
+          'allows an address on one adapter only, also when that adapter is '
+          'not connected. Give "$otherAdapterName" another address or switch '
+          'it to DHCP (double-click its card), then apply again.',
+        ),
       ProfileRejectedBySystem(:final error) => StatusMessage.error(
         'Windows refused the setting (exit code ${error.exitCode}): '
         '${error.output}',
