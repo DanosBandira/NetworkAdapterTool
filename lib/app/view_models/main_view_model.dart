@@ -6,6 +6,7 @@ import '../../core/contracts/network_adapter_reader.dart';
 import '../../core/contracts/network_profile_library_transfer.dart';
 import '../../core/contracts/network_profile_repository.dart';
 import '../../core/models/addressing_mode.dart';
+import '../../core/models/ipv4_address.dart';
 import '../../core/models/network_adapter.dart';
 import '../../core/models/network_preset.dart';
 import '../../core/models/network_profile.dart';
@@ -325,10 +326,19 @@ class MainViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> applySelectedProfileToSelectedAdapter() async {
+  /// With [confirmFreeingAddress], a static address already set on another
+  /// adapter is offered to be freed: when confirmed, that adapter is
+  /// switched to DHCP first. Without it, the refusal by Windows is reported.
+  Future<void> applySelectedProfileToSelectedAdapter({
+    ConfirmFreeingAddress? confirmFreeingAddress,
+  }) async {
     final profile = _selectedProfile;
     if (!canApplySelectedProfile || profile == null) return;
-    await _applyProfileToAdapter(profile, _selectedAdapterName!);
+    await _applyProfileToAdapter(
+      profile,
+      _selectedAdapterName!,
+      confirmFreeingAddress: confirmFreeingAddress,
+    );
   }
 
   Future<void> switchSelectedAdapterToDhcp() async {
@@ -361,11 +371,16 @@ class MainViewModel extends ChangeNotifier {
   /// check and verification as a saved profile.
   Future<void> applyManualSettings(
     NetworkProfile settings,
-    String adapterName,
-  ) async {
+    String adapterName, {
+    ConfirmFreeingAddress? confirmFreeingAddress,
+  }) async {
     if (!canConfigureAdapters) return;
     _selectedAdapterName = adapterName;
-    await _applyProfileToAdapter(settings, adapterName);
+    await _applyProfileToAdapter(
+      settings,
+      adapterName,
+      confirmFreeingAddress: confirmFreeingAddress,
+    );
   }
 
   /// Applies every line of [preset]; a failing line does not stop the rest.
@@ -666,18 +681,34 @@ class MainViewModel extends ChangeNotifier {
 
   Future<void> _applyProfileToAdapter(
     NetworkProfile profile,
-    String adapterName,
-  ) async {
+    String adapterName, {
+    ConfirmFreeingAddress? confirmFreeingAddress,
+  }) async {
     _isApplying = true;
     _statusMessage = StatusMessage.progress(
       'Applying "${profile.name}" to $adapterName…',
     );
     notifyListeners();
 
-    final outcome = await _applier.applyProfileToAdapter(profile, adapterName);
+    final result = await _applyFreeingAddressIfConfirmed(
+      profile,
+      adapterName,
+      confirmFreeingAddress,
+    );
+    if (result == null) {
+      _isApplying = false;
+      notifyListeners();
+      return;
+    }
+    final (:outcome, :freedAdapterName) = result;
     _showUpdatedAdapterAfter(outcome);
     _rememberAppliedProfile(outcome, profile, adapterName);
     _statusMessage = _describeOutcome(outcome, profile.name, adapterName);
+    if (freedAdapterName != null && outcome is ProfileApplied) {
+      _statusMessage = StatusMessage.success(
+        '${_statusMessage!.text} "$freedAdapterName" was switched to DHCP.',
+      );
+    }
     _isApplying = false;
     notifyListeners();
 
@@ -689,6 +720,126 @@ class MainViewModel extends ChangeNotifier {
     if (outcome is! ProfileApplied) return;
     await pingTargetsOf(profile);
     await _runCommandsToRunAfterApply(profile);
+  }
+
+  /// `null` when nothing was applied: the user kept the address on the other
+  /// adapter, or switching that adapter to DHCP failed (the status line
+  /// says which).
+  Future<({ApplyProfileOutcome outcome, String? freedAdapterName})?>
+  _applyFreeingAddressIfConfirmed(
+    NetworkProfile profile,
+    String adapterName,
+    ConfirmFreeingAddress? confirmFreeingAddress,
+  ) async {
+    if (confirmFreeingAddress == null) {
+      final outcome = await _applier.applyProfileToAdapter(
+        profile,
+        adapterName,
+      );
+      return (outcome: outcome, freedAdapterName: null);
+    }
+
+    String? freedAdapterName;
+    final knownConflict = _addressConflictOf(profile, adapterName);
+    if (knownConflict != null) {
+      if (!await _freeAddressIfConfirmed(
+        knownConflict,
+        confirmFreeingAddress,
+      )) {
+        return null;
+      }
+      freedAdapterName = knownConflict.otherAdapterName;
+    }
+
+    var outcome = await _applier.applyProfileToAdapter(profile, adapterName);
+    // The adapter list can be out of date; Windows then still finds the
+    // address on another adapter.
+    if (outcome case ProfileAddressInUse(
+      :final ipAddress,
+      :final otherAdapterName,
+    )) {
+      final conflict = AddressConflict(
+        profileName: profile.name,
+        ipAddress: ipAddress,
+        otherAdapterName: otherAdapterName,
+      );
+      if (!await _freeAddressIfConfirmed(conflict, confirmFreeingAddress)) {
+        return null;
+      }
+      freedAdapterName = otherAdapterName;
+      outcome = await _applier.applyProfileToAdapter(profile, adapterName);
+    }
+    return (outcome: outcome, freedAdapterName: freedAdapterName);
+  }
+
+  // Uses the adapter list already on screen, so the question comes before
+  // anything changes and costs no extra read.
+  AddressConflict? _addressConflictOf(
+    NetworkProfile profile,
+    String adapterName,
+  ) {
+    final ipAddress = profile.ipAddress;
+    if (profile.addressingMode != AddressingMode.staticIp ||
+        ipAddress == null) {
+      return null;
+    }
+    final address = Ipv4Address.tryParse(ipAddress);
+    if (address == null) return null;
+    for (final adapter in _adapters) {
+      final isOtherAdapter =
+          adapter.name.toLowerCase() != adapterName.toLowerCase();
+      if (isOtherAdapter &&
+          Ipv4Address.tryParse(adapter.adapter.ipAddress ?? '') == address) {
+        return AddressConflict(
+          profileName: profile.name,
+          ipAddress: ipAddress,
+          otherAdapterName: adapter.name,
+        );
+      }
+    }
+    return null;
+  }
+
+  // Switching to DHCP also works on a disconnected adapter, so the address
+  // can always be freed this way.
+  Future<bool> _freeAddressIfConfirmed(
+    AddressConflict conflict,
+    ConfirmFreeingAddress confirmFreeingAddress,
+  ) async {
+    final otherAdapterName = conflict.otherAdapterName;
+    if (!await confirmFreeingAddress(conflict)) {
+      _statusMessage = StatusMessage.error(
+        'Not applied: ${conflict.ipAddress} stays on "$otherAdapterName".',
+      );
+      return false;
+    }
+    _statusMessage = StatusMessage.progress(
+      'Switching "$otherAdapterName" to DHCP to free ${conflict.ipAddress}…',
+    );
+    _notifyListenersUnlessDisposed();
+
+    final outcome = await _applier.applyProfileToAdapter(
+      _dhcpShortcutProfile,
+      otherAdapterName,
+    );
+    _showUpdatedAdapterAfter(outcome);
+    _rememberAppliedProfile(outcome, _dhcpShortcutProfile, otherAdapterName);
+    if (outcome is! ProfileApplied) {
+      final reason = _describeOutcome(
+        outcome,
+        _dhcpShortcutProfile.name,
+        otherAdapterName,
+      ).text;
+      _statusMessage = StatusMessage.error(
+        'Not applied: could not switch "$otherAdapterName" to DHCP. $reason',
+      );
+      return false;
+    }
+    _statusMessage = StatusMessage.progress(
+      'Applying "${conflict.profileName}"…',
+    );
+    _notifyListenersUnlessDisposed();
+    return true;
   }
 
   Future<void> _runCommandsToRunAfterApply(NetworkProfile profile) =>
@@ -1228,6 +1379,23 @@ class LibraryImport {
 enum StatusKind { progress, success, error }
 
 /// One line of feedback shown at the bottom of the main window.
+/// Asks the user whether [AddressConflict.otherAdapterName] may be switched
+/// to DHCP, so its address can go to the profile being applied.
+typedef ConfirmFreeingAddress = Future<bool> Function(AddressConflict conflict);
+
+/// A static address the profile needs is already set on another adapter.
+class AddressConflict {
+  const AddressConflict({
+    required this.profileName,
+    required this.ipAddress,
+    required this.otherAdapterName,
+  });
+
+  final String profileName;
+  final String ipAddress;
+  final String otherAdapterName;
+}
+
 class StatusMessage {
   const StatusMessage.progress(this.text) : kind = StatusKind.progress;
   const StatusMessage.success(this.text) : kind = StatusKind.success;

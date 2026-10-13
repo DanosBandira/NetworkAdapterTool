@@ -639,6 +639,93 @@ void main() {
     });
   });
 
+  group('address used by another adapter', () {
+    // "Ethernet 3" still holds the address of machineProfile.
+    const otherAdapter = NetworkAdapter(
+      name: 'Ethernet 3',
+      description: 'USB LAN',
+      status: NetworkAdapterStatus.disconnected,
+      addressingMode: AddressingMode.staticIp,
+      ipAddress: '192.168.0.10',
+      subnetMask: '255.255.255.0',
+    );
+
+    // Reads: the initial list, the DHCP check of "Ethernet 3", the check
+    // before applying the static profile, and its verification.
+    FakeNetworkAdapterReader readerWithConflict() => FakeNetworkAdapterReader(
+      [
+        ethernet(),
+        ethernet(),
+        ethernet(),
+        ethernet(
+          addressingMode: AddressingMode.staticIp,
+          ipAddress: '192.168.0.10',
+          subnetMask: '255.255.255.0',
+        ),
+      ],
+      otherAdapters: [otherAdapter],
+    );
+
+    Future<MainViewModel> viewModelReadyToApplyMachine() async {
+      final viewModel = await initializedViewModel(readerWithConflict());
+      viewModel
+        ..selectAdapter('Ethernet')
+        ..selectProfile(machineProfile.name);
+      return viewModel;
+    }
+
+    test('switches the other adapter to DHCP when confirmed', () async {
+      final viewModel = await viewModelReadyToApplyMachine();
+      final askedConflicts = <AddressConflict>[];
+
+      await viewModel.applySelectedProfileToSelectedAdapter(
+        confirmFreeingAddress: (conflict) async {
+          askedConflicts.add(conflict);
+          return true;
+        },
+      );
+
+      expect(askedConflicts.single.otherAdapterName, 'Ethernet 3');
+      expect(askedConflicts.single.ipAddress, '192.168.0.10');
+      expect(
+        [
+          for (final (profile, adapterName) in configurator.appliedProfiles)
+            (profile.addressingMode, adapterName),
+        ],
+        [
+          (AddressingMode.dhcp, 'Ethernet 3'),
+          (AddressingMode.staticIp, 'Ethernet'),
+        ],
+      );
+      expect(viewModel.statusMessage?.kind, StatusKind.success);
+      expect(
+        viewModel.statusMessage?.text,
+        contains('"Ethernet 3" was switched to DHCP'),
+      );
+    });
+
+    test('changes nothing when the user keeps the address', () async {
+      final viewModel = await viewModelReadyToApplyMachine();
+
+      await viewModel.applySelectedProfileToSelectedAdapter(
+        confirmFreeingAddress: (_) async => false,
+      );
+
+      expect(configurator.appliedProfiles, isEmpty);
+      expect(viewModel.statusMessage?.kind, StatusKind.error);
+      expect(viewModel.statusMessage?.text, contains('stays on "Ethernet 3"'));
+      expect(viewModel.canApplySelectedProfile, isTrue);
+    });
+
+    test('applies directly when nobody can be asked', () async {
+      final viewModel = await viewModelReadyToApplyMachine();
+
+      await viewModel.applySelectedProfileToSelectedAdapter();
+
+      expect(configurator.appliedProfiles.single.$2, 'Ethernet');
+    });
+  });
+
   group('active profile', () {
     String? activeProfileNameOf(MainViewModel viewModel) =>
         viewModel.activeProfileNameOf(viewModel.adapters.single);

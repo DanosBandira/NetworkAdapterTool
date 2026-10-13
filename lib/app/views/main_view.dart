@@ -804,7 +804,10 @@ class _ActionBar extends StatelessWidget {
           Center(
             child: ApplyArrowButton(
               onPressed: viewModel.canApplySelectedProfile
-                  ? viewModel.applySelectedProfileToSelectedAdapter
+                  ? () => viewModel.applySelectedProfileToSelectedAdapter(
+                      confirmFreeingAddress: (conflict) =>
+                          _confirmFreeingAddress(context, conflict),
+                    )
                   : null,
             ),
           ),
@@ -1016,8 +1019,46 @@ Future<void> _openAdapterSettings(
       child: AdapterSettingsView(adapter: adapter),
     ),
   );
-  if (settings == null) return;
-  await mainViewModel.applyManualSettings(settings, adapter.name);
+  if (settings == null || !context.mounted) return;
+  await mainViewModel.applyManualSettings(
+    settings,
+    adapter.name,
+    confirmFreeingAddress: (conflict) =>
+        _confirmFreeingAddress(context, conflict),
+  );
+}
+
+/// Windows allows an address on one adapter only; asks whether the other
+/// adapter may give it up by switching to DHCP.
+Future<bool> _confirmFreeingAddress(
+  BuildContext context,
+  AddressConflict conflict,
+) async {
+  if (!context.mounted) return false;
+  final otherAdapterName = conflict.otherAdapterName;
+  final isConfirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Address already in use'),
+      content: Text(
+        '${conflict.ipAddress} is already set on adapter '
+        '"$otherAdapterName".\n\n'
+        'Switch "$otherAdapterName" to DHCP and apply '
+        '"${conflict.profileName}"?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: Text('Switch "$otherAdapterName" to DHCP'),
+        ),
+      ],
+    ),
+  );
+  return isConfirmed ?? false;
 }
 
 Future<void> _openProfileEditor(

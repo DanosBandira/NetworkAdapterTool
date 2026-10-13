@@ -318,6 +318,9 @@ const _helpSteps = [
           'is the case.',
       'Switching to DHCP, or between static IPs, also works on an adapter '
           'that is not connected.',
+      'An IP address can be set on one adapter only, also when that adapter '
+          'is not connected. If another adapter already has it, the app asks '
+          'whether to switch that adapter to DHCP first.',
       'The app needs administrator rights to change network settings, which '
           'is why Windows asks for permission when it starts. Commands run '
           'with the same rights.',

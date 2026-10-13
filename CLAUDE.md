@@ -225,7 +225,17 @@ prefix length to a dotted subnet mask. The reader sits behind
   rejection of a static profile the applier reads all adapters and returns
   `ProfileAddressInUse` naming the other adapter, so the message says what
   to do; no extra read on the success path, no parsing of localized netsh
-  text. The app does not free the address on the other adapter by itself.
+  text.
+- Freeing the address (user request, 2026-10-13: "always be able to
+  continue"): the arrow button and the adapter settings dialog pass a
+  `ConfirmFreeingAddress` callback. Before applying a static profile,
+  `MainViewModel` checks the adapter list on screen for another adapter
+  with the same IP; if found, the view asks "Switch "X" to DHCP and apply?"
+  and on yes switches X to DHCP (works while disconnected), then applies.
+  When the list was stale and Windows still returns `ProfileAddressInUse`,
+  the same question follows and the apply is retried once. Cancel or a
+  failed DHCP switch applies nothing. Presets pass no callback, so their
+  lines only report the conflict.
 - A DHCP profile is verified on addressing mode only; right after switching
   the adapter may still hold an APIPA address.
 - Windows does not disable DHCP on a disconnected adapter: switching a
